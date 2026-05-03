@@ -5,6 +5,7 @@ export interface PluginSettings {
 	remotePassword: string;
 	remoteTunnel: boolean;
 	remoteBind: string;
+	presenterControlledNavigation: boolean;
 	initialView: string;
 	colorSchema: string;
 	aspectRatio: string;

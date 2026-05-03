@@ -1,4 +1,5 @@
 import joplin from 'api';
+import { Resolver } from 'dns/promises';
 // electron is available at runtime inside Joplin (Electron app) but has no bundled types.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { shell } = require('electron') as { shell: { openExternal: (url: string) => void } };
@@ -44,10 +45,12 @@ const failedHtml = (logs: string[]) =>
 		LOG: logContent(logs, 'No output.'),
 	});
 
-const readyHtml = (port: number, logs: string[]) =>
+const readyHtml = (port: number, logs: string[], tunnelEntryUrl = '', tunnelEnabled = false, status = '') =>
 	render(readyTemplate, {
 		STYLE: style,
 		PORT: String(port),
+		TUNNEL: tunnelEnabled ? `<div class="url">Tunnel Entry: ${esc(tunnelEntryUrl || 'waiting for Cloudflare URL...')}</div>` : '',
+		STATUS: status ? `<div class="status">${esc(status)}</div>` : '',
 		LOG: logContent(logs, 'No output yet…'),
 	});
 
@@ -57,6 +60,23 @@ const slidevUrl = (port: number, view: string): string => {
 	if (view === 'presenter') return `http://localhost:${port}/presenter`;
 	if (view === 'overview') return `http://localhost:${port}/overview`;
 	return `http://localhost:${port}`;
+};
+
+const cloudflareResolver = new Resolver();
+cloudflareResolver.setServers(['1.1.1.1', '1.0.0.1']);
+
+const isHostnameResolvable = async (url: string): Promise<boolean> => {
+	try {
+		const hostname = new URL(url).hostname;
+		try {
+			await cloudflareResolver.resolve4(hostname);
+		} catch {
+			await cloudflareResolver.resolve6(hostname);
+		}
+		return true;
+	} catch {
+		return false;
+	}
 };
 
 let handle: string | undefined;
@@ -86,10 +106,14 @@ export const showSlidevPresentation = async (
 	let cancelled = false;
 	let serverReady = false;
 	let serverFailed = false;
+	let tunnelEntryUrl = '';
+	let tunnelStatus = '';
+	const tunnelEnabled = settings.remoteTunnel;
 
 	const logLines: string[] = [];
 	const MAX_LOG_LINES = 30;
 	let updateScheduled = false;
+	let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const scheduleHtmlUpdate = () => {
 		if (updateScheduled || cancelled) return;
@@ -99,7 +123,7 @@ export const showSlidevPresentation = async (
 			if (cancelled) return;
 			const slice = logLines.slice(-MAX_LOG_LINES);
 			const html = serverReady
-				? readyHtml(port, slice)
+				? readyHtml(port, slice, tunnelEntryUrl, tunnelEnabled, tunnelStatus)
 				: serverFailed
 					? failedHtml(slice)
 					: loadingHtml(port, slice);
@@ -107,6 +131,16 @@ export const showSlidevPresentation = async (
 				await dialogs.setHtml(dlg, html);
 			} catch { /* dialog may have been closed */ }
 		}, 150);
+	};
+
+	const setTunnelStatus = (message: string) => {
+		tunnelStatus = message;
+		if (statusClearTimer) clearTimeout(statusClearTimer);
+		statusClearTimer = setTimeout(() => {
+			tunnelStatus = '';
+			scheduleHtmlUpdate();
+		}, 6000);
+		scheduleHtmlUpdate();
 	};
 
 	const preprocess = makeMarkdownPreprocessor({
@@ -136,13 +170,19 @@ export const showSlidevPresentation = async (
 			try { shell.openExternal(initialUrl); } catch { /* ignore */ }
 		}
 		try {
-			await dialogs.setHtml(dlg, readyHtml(port, logLines.slice(-MAX_LOG_LINES)));
-			await dialogs.setButtons(dlg, [
+			await dialogs.setHtml(dlg, readyHtml(port, logLines.slice(-MAX_LOG_LINES), tunnelEntryUrl, tunnelEnabled, tunnelStatus));
+			const buttons = [
 				{ id: 'open-browser', title: 'Presentation' },
 				{ id: 'open-presenter', title: 'Presenter' },
 				{ id: 'open-overview', title: 'Overview' },
+			];
+			if (tunnelEnabled) {
+				buttons.push({ id: 'open-tunnel-entry', title: 'Tunnel Entry' });
+			}
+			buttons.push(
 				{ id: 'cancel', title: 'Close' },
-			]);
+			);
+			await dialogs.setButtons(dlg, buttons);
 		} catch { /* dialog may have been closed */ }
 	};
 
@@ -155,6 +195,10 @@ export const showSlidevPresentation = async (
 				(line) => {
 					if (cancelled) return;
 					logLines.push(`[${ts()}]  ${line}`);
+					const tunnelMatch = line.match(/remote via tunnel\s*>\s*(https?:\/\/\S+)/);
+					if (tunnelMatch) {
+						tunnelEntryUrl = tunnelMatch[1];
+					}
 					scheduleHtmlUpdate();
 					// Slidev prints the localhost URL in its startup table when ready.
 					if (!serverReady && line.includes(`localhost:${port}`)) {
@@ -204,14 +248,29 @@ export const showSlidevPresentation = async (
 
 	// Open dialog — loop so "Presentation" re-opens without closing.
 	let result = await dialogs.open(dlg);
-	while (result?.id === 'open-browser' || result?.id === 'open-presenter' || result?.id === 'open-overview') {
+	while (
+		result?.id === 'open-browser'
+		|| result?.id === 'open-presenter'
+		|| result?.id === 'open-overview'
+		|| result?.id === 'open-tunnel-entry'
+	) {
 		if (result.id === 'open-presenter') shell.openExternal(slidevUrl(port, 'presenter'));
 		else if (result.id === 'open-overview') shell.openExternal(slidevUrl(port, 'overview'));
+		else if (result.id === 'open-tunnel-entry') {
+			if (!tunnelEntryUrl) {
+				setTunnelStatus('Cloudflare tunnel entry is not ready yet. Wait until Slidev logs "remote via tunnel".');
+			} else if (await isHostnameResolvable(tunnelEntryUrl)) {
+				shell.openExternal(tunnelEntryUrl);
+			} else {
+				setTunnelStatus('Cloudflare tunnel host is not resolvable yet. Wait a few seconds and try again.');
+			}
+		}
 		else shell.openExternal(slidevUrl(port, 'slides'));
 		result = await dialogs.open(dlg);
 	}
 	cancelled = true;
 
 	await serverTask;
+	if (statusClearTimer) clearTimeout(statusClearTimer);
 	if (server) stopSlidevServer(server);
 };

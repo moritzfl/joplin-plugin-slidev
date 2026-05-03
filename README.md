@@ -106,6 +106,8 @@ Advanced remote access settings map to Slidev's dev-server CLI options:
 - `Enable Slidev remote tunnel`: passes `--remote --tunnel` to open a Cloudflare Quick Tunnel for sharing the local server over the internet.
 - `Slidev remote bind address`: passes `--bind <address>` when remote access is enabled. Leave empty to use Slidev's default `0.0.0.0`.
 
+Enable `Presenter-controlled navigation` in advanced settings to keep the public slide view locked to the presenter. Viewers cannot advance slides locally; presenter mode and tunnel entry controls still drive the shared presentation.
+
 ## Themes And Addons
 
 Use `Tools -> Manage Slidev Themes/Addons` to browse npm packages tagged for Slidev.

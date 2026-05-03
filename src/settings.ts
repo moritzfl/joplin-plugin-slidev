@@ -10,6 +10,7 @@ const remoteAccessKey = 'slidev-remote-access';
 const remotePasswordKey = 'slidev-remote-password';
 const remoteTunnelKey = 'slidev-remote-tunnel';
 const remoteBindKey = 'slidev-remote-bind';
+const presenterControlledNavigationKey = 'slidev-presenter-controlled-navigation';
 const initialViewKey = 'slidev-initial-view';
 const colorSchemaKey = 'slidev-color-schema';
 const aspectRatioKey = 'slidev-aspect-ratio';
@@ -36,6 +37,7 @@ export const getSettings = async (): Promise<PluginSettings> => {
 		remotePassword: await joplin.settings.value(remotePasswordKey),
 		remoteTunnel: await joplin.settings.value(remoteTunnelKey),
 		remoteBind: await joplin.settings.value(remoteBindKey),
+		presenterControlledNavigation: await joplin.settings.value(presenterControlledNavigationKey),
 		initialView: await joplin.settings.value(initialViewKey),
 		colorSchema: await joplin.settings.value(colorSchemaKey),
 		aspectRatio: await joplin.settings.value(aspectRatioKey),
@@ -137,6 +139,16 @@ export const registerSettings = async (workspaceDir: string, installedThemes: In
 			type: SettingItemType.String,
 			storage: SettingStorage.File,
 			value: '',
+		},
+		[presenterControlledNavigationKey]: {
+			public: true,
+			advanced: true,
+			section: settingsSectionName,
+			label: 'Presenter-controlled navigation',
+			description: 'Lock the public slide view so viewers cannot advance slides themselves. Presenter mode and tunnel entry controls remain usable and keep the public view in sync.',
+			type: SettingItemType.Bool,
+			storage: SettingStorage.File,
+			value: false,
 		},
 		[initialViewKey]: {
 			public: true,
