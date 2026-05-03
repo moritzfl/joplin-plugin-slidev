@@ -75,6 +75,7 @@ async function bundle() {
 		bundle: true,
 		platform: 'node',
 		target: 'node22',
+		loader: { '.css': 'text', '.html': 'text' },
 		external: [
 			// Keep Node.js built-ins and electron external so they are
 			// resolved at runtime inside the Joplin plugin host.

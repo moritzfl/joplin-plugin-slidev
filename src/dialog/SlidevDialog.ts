@@ -13,137 +13,51 @@ import {
 import { makeMarkdownPreprocessor } from '../markdownPreprocessor';
 import { PluginSettings } from '../types';
 import { buildSlidevExtraFiles } from '../slidevExtraFiles';
+import { esc, render } from '../htmlUtils';
+import style from './slidevDialog.css';
+import loadingTemplate from './loadingDialog.html';
+import failedTemplate from './failedDialog.html';
+import readyTemplate from './readyDialog.html';
 
 const dialogs = joplin.views.dialogs;
 const dialogId = `${pluginPrefix}slidevDialog`;
 
 // ---------- HTML templates ----------
 
-const esc = (s: string) =>
-	s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
 const ts = () => new Date().toLocaleTimeString();
 
-const SHARED_STYLE = `
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { height:100%; overflow:hidden; }
-body { background:#12121e; color:#d0d0d8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
-.shell { position:absolute; inset:0; padding:28px 32px; display:flex; flex-direction:column; gap:16px; }
-.header { display:flex; align-items:center; gap:14px; flex-shrink:0; }
-.log {
-  flex:1; min-height:0; overflow-y:auto;
-  background:#0a0a14; border:1px solid #1e1e30; border-radius:6px;
-  padding:10px 14px;
-  font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
-  font-size:11.5px; line-height:1.75; color:#7ec89a;
-  scrollbar-color:#7ee0ae rgba(255,255,255,.08);
-}
-.log::-webkit-scrollbar { width:8px; }
-.log::-webkit-scrollbar-track { background:rgba(255,255,255,.08); border-radius:4px; }
-.log::-webkit-scrollbar-thumb { background:#7ee0ae; border-radius:4px; }
-.log::-webkit-scrollbar-thumb:hover { background:#9eefc8; }
-.line { white-space:pre-wrap; word-break:break-all; }`;
-
-const loadingHtml = (port: number, logs: string[]) => {
-	const logContent = logs.length === 0
-		? '<span style="opacity:0.4">Waiting for Slidev output…</span>'
+const logContent = (logs: string[], empty: string) =>
+	logs.length === 0
+		? `<span style="opacity:0.4">${empty}</span>`
 		: logs.map(l => `<div class="line">${esc(l)}</div>`).join('');
 
-	return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<style>
-${SHARED_STYLE}
-.spinner {
-  width:22px; height:22px; flex-shrink:0;
-  border:3px solid #2a2a3a; border-top-color:#42b883;
-  border-radius:50%; animation:spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform:rotate(360deg); } }
-.title { font-size:15px; font-weight:500; }
-.subtitle { font-size:12px; color:#555; margin-top:3px; }
-</style></head>
-<body><div class="shell">
-<div class="header">
-  <div class="spinner"></div>
-  <div>
-    <div class="title">Starting Slidev on port ${port}…</div>
-  </div>
-</div>
-<div class="log">${logContent}</div>
-</div>
-<script>var el=document.querySelector('.log');if(el)el.scrollTop=el.scrollHeight;</script>
-</body></html>`;
-};
+const loadingHtml = (port: number, logs: string[]) =>
+	render(loadingTemplate, {
+		STYLE: style,
+		PORT: String(port),
+		LOG: logContent(logs, 'Waiting for Slidev output…'),
+	});
 
-const failedHtml = (logs: string[]) => {
-	const logContent = logs.length === 0
-		? '<span style="opacity:0.4">No output.</span>'
-		: logs.map(l => `<div class="line">${esc(l)}</div>`).join('');
+const failedHtml = (logs: string[]) =>
+	render(failedTemplate, {
+		STYLE: style,
+		LOG: logContent(logs, 'No output.'),
+	});
 
-	return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<style>
-${SHARED_STYLE}
-.icon {
-  width:22px; height:22px; flex-shrink:0; border-radius:50%;
-  background:#e74c3c; color:#fff;
-  display:flex; align-items:center; justify-content:center;
-  font-size:13px; font-weight:700; line-height:1;
-}
-.title { font-size:15px; font-weight:500; color:#e74c3c; }
-.log { border-color:#3a1a1a !important; color:#c09090 !important; }
-</style></head>
-<body><div class="shell">
-<div class="header">
-  <div class="icon">✕</div>
-  <div class="title">Failed to start Slidev</div>
-</div>
-<div class="log">${logContent}</div>
-</div>
-<script>var el=document.querySelector('.log');if(el)el.scrollTop=el.scrollHeight;</script>
-</body></html>`;
-};
+const readyHtml = (port: number, logs: string[]) =>
+	render(readyTemplate, {
+		STYLE: style,
+		PORT: String(port),
+		LOG: logContent(logs, 'No output yet…'),
+	});
 
-const readyHtml = (port: number, logs: string[]) => {
-	const logContent = logs.length === 0
-		? '<span style="opacity:0.4">No output yet…</span>'
-		: logs.map(l => `<div class="line">${esc(l)}</div>`).join('');
-
-	return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<style>
-${SHARED_STYLE}
-.check {
-  width:22px; height:22px; flex-shrink:0; border-radius:50%;
-  background:#42b883; color:#12121e;
-  display:flex; align-items:center; justify-content:center;
-  font-size:13px; font-weight:700;
-}
-.title { font-size:15px; font-weight:500; }
-.url {
-  font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
-  font-size:12px; color:#42b883; margin-top:3px;
-}
-</style></head>
-<body><div class="shell">
-<div class="header">
-  <div class="check">✓</div>
-  <div>
-    <div class="title">Slidev is running</div>
-    <div class="url">http://localhost:${port}/</div>
-  </div>
-</div>
-<div class="log">${logContent}</div>
-</div>
-<script>var el=document.querySelector('.log');if(el)el.scrollTop=el.scrollHeight;</script>
-</body></html>`;
-};
-
+// ---------- dialog handle ----------
 
 const slidevUrl = (port: number, view: string): string => {
 	if (view === 'presenter') return `http://localhost:${port}/presenter`;
 	if (view === 'overview') return `http://localhost:${port}/overview`;
 	return `http://localhost:${port}`;
 };
-
-// ---------- dialog handle ----------
 
 let handle: string | undefined;
 

@@ -1,0 +1,53 @@
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; overflow:hidden; }
+body { background:#12121e; color:#d0d0d8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+.shell { position:absolute; inset:0; padding:28px 32px; display:flex; flex-direction:column; gap:16px; }
+.header { display:flex; align-items:center; gap:14px; flex-shrink:0; }
+
+.log {
+  flex:1; min-height:0; overflow-y:auto;
+  background:#0a0a14; border:1px solid #1e1e30; border-radius:6px;
+  padding:10px 14px;
+  font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
+  font-size:11.5px; line-height:1.75; color:#7ec89a;
+  scrollbar-color:#7ee0ae rgba(255,255,255,.08);
+}
+.log::-webkit-scrollbar { width:8px; }
+.log::-webkit-scrollbar-track { background:rgba(255,255,255,.08); border-radius:4px; }
+.log::-webkit-scrollbar-thumb { background:#7ee0ae; border-radius:4px; }
+.log::-webkit-scrollbar-thumb:hover { background:#9eefc8; }
+.log.error { border-color:#3a1a1a; color:#c09090; }
+.line { white-space:pre-wrap; word-break:break-all; }
+
+/* loading state */
+.spinner {
+  width:22px; height:22px; flex-shrink:0;
+  border:3px solid #2a2a3a; border-top-color:#42b883;
+  border-radius:50%; animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* failed state */
+.icon {
+  width:22px; height:22px; flex-shrink:0; border-radius:50%;
+  background:#e74c3c; color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700; line-height:1;
+}
+
+/* ready state */
+.check {
+  width:22px; height:22px; flex-shrink:0; border-radius:50%;
+  background:#42b883; color:#12121e;
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700;
+}
+.url {
+  font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
+  font-size:12px; color:#42b883; margin-top:3px;
+}
+
+/* shared title */
+.title { font-size:15px; font-weight:500; }
+.title.error { color:#e74c3c; }
+.subtitle { font-size:12px; color:#555; margin-top:3px; }

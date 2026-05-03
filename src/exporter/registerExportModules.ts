@@ -7,6 +7,9 @@ import { exportSlidevDeck } from '../slideServer';
 import { pluginPrefix } from '../constants';
 import { join } from 'path';
 import { buildSlidevExtraFiles } from '../slidevExtraFiles';
+import { esc, render } from '../htmlUtils';
+import style from './exportProgress.css';
+import progressTemplate from './exportProgressDialog.html';
 
 type SlidevExportFormat = 'pdf' | 'pptx' | 'png';
 
@@ -17,9 +20,6 @@ interface PendingNote {
 
 const dialogs = joplin.views.dialogs;
 
-const esc = (s: string) =>
-	s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
 const ts = () => new Date().toLocaleTimeString();
 
 type ProgressState = 'running' | 'success' | 'error';
@@ -28,51 +28,15 @@ const exportProgressHtml = (title: string, status: string, logs: string[], state
 	const logContent = logs.length === 0
 		? '<span style="opacity:0.4">Waiting for Slidev export output...</span>'
 		: logs.map(l => `<div class="line">${esc(l)}</div>`).join('');
-	const symbol = state === 'success' ? '✓' : state === 'error' ? '!' : '›';
 
-	return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { height:100%; overflow:hidden; }
-body { background:#12121e; color:#d0d0d8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
-.shell { position:absolute; inset:0; padding:28px 32px; display:flex; flex-direction:column; gap:16px; }
-.header { display:flex; align-items:center; gap:14px; flex-shrink:0; }
-.dot {
-  width:22px; height:22px; flex-shrink:0; border-radius:50%;
-  background:#42b883; color:#12121e;
-  display:flex; align-items:center; justify-content:center;
-  font-size:13px; font-weight:700;
-}
-.dot.error { background:#e74c3c; color:#fff; }
-.dot.success { background:#42b883; color:#12121e; }
-.title { font-size:15px; font-weight:500; }
-.status { font-size:12px; color:#777; margin-top:3px; }
-.log {
-  flex:1; min-height:0; overflow-y:auto;
-  background:#0a0a14; border:1px solid #1e1e30; border-radius:6px;
-  padding:10px 14px;
-  font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
-  font-size:11.5px; line-height:1.75; color:#7ec89a;
-  scrollbar-color:#7ee0ae rgba(255,255,255,.08);
-}
-.log::-webkit-scrollbar { width:8px; }
-.log::-webkit-scrollbar-track { background:rgba(255,255,255,.08); border-radius:4px; }
-.log::-webkit-scrollbar-thumb { background:#7ee0ae; border-radius:4px; }
-.log::-webkit-scrollbar-thumb:hover { background:#9eefc8; }
-.line { white-space:pre-wrap; word-break:break-all; }
-</style></head>
-<body><div class="shell">
-<div class="header">
-  <div class="dot ${state === 'error' ? 'error' : state === 'success' ? 'success' : ''}">${symbol}</div>
-  <div>
-    <div class="title">${esc(title)}</div>
-    <div class="status">${esc(status)}</div>
-  </div>
-</div>
-<div class="log">${logContent}</div>
-</div>
-<script>var el=document.querySelector('.log');if(el)el.scrollTop=el.scrollHeight;</script>
-</body></html>`;
+	return render(progressTemplate, {
+		STYLE: style,
+		DOT_CLASS: state === 'running' ? '' : state,
+		SYMBOL: state === 'success' ? '✓' : state === 'error' ? '!' : '›',
+		TITLE: esc(title),
+		STATUS: esc(status),
+		LOG: logContent,
+	});
 };
 
 let exportProgressCounter = 0;
