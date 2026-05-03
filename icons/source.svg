@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+	<title id="title">Slidev Integration placeholder icon</title>
+	<desc id="desc">A simple presentation screen with a play button.</desc>
+	<rect width="128" height="128" rx="28" fill="#2563eb" />
+	<rect x="22" y="28" width="84" height="58" rx="8" fill="#f8fafc" />
+	<path d="M54 45v24l22-12z" fill="#2563eb" />
+	<path d="M64 86v15" stroke="#f8fafc" stroke-width="8" stroke-linecap="round" />
+	<path d="M42 104h44" stroke="#f8fafc" stroke-width="8" stroke-linecap="round" />
+	<circle cx="91" cy="39" r="7" fill="#22c55e" />
+</svg>

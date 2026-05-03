@@ -118,6 +118,21 @@ async function copyAssets() {
 			await mkdir(join(distDir, asset), { recursive: true });
 		}
 	}
+
+	const rootAssetDirs = ['icons'];
+	for (const rootAssetDir of rootAssetDirs) {
+		const assetRoot = join(rootDir, rootAssetDir);
+		if (!existsSync(assetRoot)) continue;
+
+		const rootAssets = await glob.glob('**/*', { cwd: assetRoot, nodir: true });
+		for (const asset of rootAssets) {
+			const srcPath = join(assetRoot, asset);
+			const destPath = join(distDir, rootAssetDir, asset);
+			const destDir = dirname(destPath);
+			await mkdir(destDir, { recursive: true });
+			await copyFile(srcPath, destPath);
+		}
+	}
 }
 
 async function build() {
