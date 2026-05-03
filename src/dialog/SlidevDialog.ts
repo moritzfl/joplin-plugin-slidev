@@ -26,10 +26,23 @@ const ts = () => new Date().toLocaleTimeString();
 
 const SHARED_STYLE = `
 * { margin:0; padding:0; box-sizing:border-box; }
-body {
-  background:#12121e; color:#d0d0d8;
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-}`;
+html, body { height:100%; overflow:hidden; }
+body { background:#12121e; color:#d0d0d8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+.shell { position:absolute; inset:0; padding:28px 32px; display:flex; flex-direction:column; gap:16px; }
+.header { display:flex; align-items:center; gap:14px; flex-shrink:0; }
+.log {
+  flex:1; min-height:0; overflow-y:auto;
+  background:#0a0a14; border:1px solid #1e1e30; border-radius:6px;
+  padding:10px 14px;
+  font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
+  font-size:11.5px; line-height:1.75; color:#7ec89a;
+  scrollbar-color:#7ee0ae rgba(255,255,255,.08);
+}
+.log::-webkit-scrollbar { width:8px; }
+.log::-webkit-scrollbar-track { background:rgba(255,255,255,.08); border-radius:4px; }
+.log::-webkit-scrollbar-thumb { background:#7ee0ae; border-radius:4px; }
+.log::-webkit-scrollbar-thumb:hover { background:#9eefc8; }
+.line { white-space:pre-wrap; word-break:break-all; }`;
 
 const loadingHtml = (port: number, logs: string[]) => {
 	const logContent = logs.length === 0
@@ -39,8 +52,6 @@ const loadingHtml = (port: number, logs: string[]) => {
 	return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
 <style>
 ${SHARED_STYLE}
-body { padding:28px 32px; height:100vh; display:flex; flex-direction:column; gap:16px; }
-.header { display:flex; align-items:center; gap:14px; }
 .spinner {
   width:22px; height:22px; flex-shrink:0;
   border:3px solid #2a2a3a; border-top-color:#42b883;
@@ -49,24 +60,17 @@ body { padding:28px 32px; height:100vh; display:flex; flex-direction:column; gap
 @keyframes spin { to { transform:rotate(360deg); } }
 .title { font-size:15px; font-weight:500; }
 .subtitle { font-size:12px; color:#555; margin-top:3px; }
-.log {
-  flex:1; overflow-y:auto;
-  background:#0a0a14; border:1px solid #1e1e30; border-radius:6px;
-  padding:10px 14px;
-  font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
-  font-size:11.5px; line-height:1.75; color:#7ec89a;
-}
-.line { white-space:pre-wrap; word-break:break-all; }
 </style></head>
-<body>
+<body><div class="shell">
 <div class="header">
   <div class="spinner"></div>
   <div>
     <div class="title">Starting Slidev on port ${port}…</div>
   </div>
 </div>
-<div class="log" id="log">${logContent}</div>
-<script>var el=document.getElementById('log');if(el)el.scrollTop=el.scrollHeight;</script>
+<div class="log">${logContent}</div>
+</div>
+<script>var el=document.querySelector('.log');if(el)el.scrollTop=el.scrollHeight;</script>
 </body></html>`;
 };
 
@@ -78,8 +82,6 @@ const failedHtml = (logs: string[]) => {
 	return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
 <style>
 ${SHARED_STYLE}
-body { padding:28px 32px; height:100vh; display:flex; flex-direction:column; gap:16px; }
-.header { display:flex; align-items:center; gap:14px; }
 .icon {
   width:22px; height:22px; flex-shrink:0; border-radius:50%;
   background:#e74c3c; color:#fff;
@@ -87,22 +89,16 @@ body { padding:28px 32px; height:100vh; display:flex; flex-direction:column; gap
   font-size:13px; font-weight:700; line-height:1;
 }
 .title { font-size:15px; font-weight:500; color:#e74c3c; }
-.log {
-  flex:1; overflow-y:auto;
-  background:#0a0a14; border:1px solid #3a1a1a; border-radius:6px;
-  padding:10px 14px;
-  font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
-  font-size:11.5px; line-height:1.75; color:#c09090;
-}
-.line { white-space:pre-wrap; word-break:break-all; }
+.log { border-color:#3a1a1a !important; color:#c09090 !important; }
 </style></head>
-<body>
+<body><div class="shell">
 <div class="header">
   <div class="icon">✕</div>
   <div class="title">Failed to start Slidev</div>
 </div>
-<div class="log" id="log">${logContent}</div>
-<script>var el=document.getElementById('log');if(el)el.scrollTop=el.scrollHeight;</script>
+<div class="log">${logContent}</div>
+</div>
+<script>var el=document.querySelector('.log');if(el)el.scrollTop=el.scrollHeight;</script>
 </body></html>`;
 };
 
@@ -114,8 +110,6 @@ const readyHtml = (port: number, logs: string[]) => {
 	return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
 <style>
 ${SHARED_STYLE}
-body { padding:28px 32px; height:100vh; display:flex; flex-direction:column; gap:16px; }
-.header { display:flex; align-items:center; gap:14px; }
 .check {
   width:22px; height:22px; flex-shrink:0; border-radius:50%;
   background:#42b883; color:#12121e;
@@ -127,16 +121,8 @@ body { padding:28px 32px; height:100vh; display:flex; flex-direction:column; gap
   font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
   font-size:12px; color:#42b883; margin-top:3px;
 }
-.log {
-  flex:1; overflow-y:auto;
-  background:#0a0a14; border:1px solid #1e1e30; border-radius:6px;
-  padding:10px 14px;
-  font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
-  font-size:11.5px; line-height:1.75; color:#7ec89a;
-}
-.line { white-space:pre-wrap; word-break:break-all; }
 </style></head>
-<body>
+<body><div class="shell">
 <div class="header">
   <div class="check">✓</div>
   <div>
@@ -144,8 +130,9 @@ body { padding:28px 32px; height:100vh; display:flex; flex-direction:column; gap
     <div class="url">http://localhost:${port}/</div>
   </div>
 </div>
-<div class="log" id="log">${logContent}</div>
-<script>var el=document.getElementById('log');if(el)el.scrollTop=el.scrollHeight;</script>
+<div class="log">${logContent}</div>
+</div>
+<script>var el=document.querySelector('.log');if(el)el.scrollTop=el.scrollHeight;</script>
 </body></html>`;
 };
 
