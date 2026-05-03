@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build and package output
+dist/
+publish/
+*.jpl
+tmp/
+
+# Generated from generator-joplin during npm install.
+api/
+
+# Logs and diagnostics
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Editor and IDE metadata
+.idea/
+*.iml
+.vscode/
+
+.claude
+
+# macOS
+.DS_Store

@@ -1,0 +1,6 @@
+/* Restores the Slidev dialog to its default non-fullscreen state */
+iframe[id$="moritzf-slidev-plugin-slidevDialog"] {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}

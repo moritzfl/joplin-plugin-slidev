@@ -1,0 +1,8 @@
+/* Makes the Slidev dialog take up the entire Joplin window */
+iframe[id$="moritzf-slidev-plugin-slidevDialog"] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+}

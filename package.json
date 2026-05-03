@@ -1,0 +1,36 @@
+{
+  "name": "joplin-plugin-slidev",
+  "version": "0.1.0",
+  "scripts": {
+    "postinstall": "node scripts/sync-joplin-api.mjs",
+    "dist": "node build.mts build",
+    "build-and-run": "bash scripts/build-and-run.sh",
+    "build-and-debug": "bash scripts/build-and-debug.sh",
+    "debug-targets": "node scripts/list-debug-targets.mjs",
+    "puppeteer:joplin": "node scripts/puppeteer-joplin.mjs",
+    "tsc": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moritzfl/joplin-plugin-slidev"
+  },
+  "license": "MIT",
+  "keywords": [
+    "joplin-plugin"
+  ],
+  "files": [
+    "publish"
+  ],
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^25.6.0",
+    "esbuild": "0.28.0",
+    "generator-joplin": "^3.5.1",
+    "glob": "^13.0.6",
+    "markdown-it": "^14.1.1",
+    "puppeteer-core": "^24.42.0",
+    "tar": "^7.5.13",
+    "typescript": "^6.0.3"
+  }
+}
