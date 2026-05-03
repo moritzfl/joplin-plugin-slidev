@@ -11,6 +11,13 @@ export interface SlidevServer {
 	dataDir: string;
 }
 
+export interface SlidevRemoteOptions {
+	remoteAccess: boolean;
+	remotePassword: string;
+	remoteTunnel: boolean;
+	remoteBind: string;
+}
+
 export interface InstalledSlidevTheme {
 	name: string;
 	packageName: string;
@@ -177,7 +184,7 @@ export const buildChildEnv = (): NodeJS.ProcessEnv => {
 
 // ---------- version helpers ----------
 
-const SLIDEV_WORK_DIR = 'slidev-tmp';
+const SLIDEV_WORK_DIR = 'slidev-workspace';
 
 export const slidevWorkspaceDir = (dataDir: string): string => join(dataDir, SLIDEV_WORK_DIR);
 
@@ -414,6 +421,7 @@ export const startSlidevServer = async (
 	onLog?: (line: string) => void,
 	preprocessMarkdown?: (md: string, workDir: string) => Promise<string>,
 	extraFiles?: Record<string, string>,
+	remoteOptions?: SlidevRemoteOptions,
 ): Promise<SlidevServer> => {
 	registerProcessCleanup(dataDir);
 
@@ -428,8 +436,16 @@ export const startSlidevServer = async (
 
 	const cmd = slidevBin;
 	const args = ['slides.md', '--port', String(port), '--no-open'];
+	const remotePassword = remoteOptions?.remotePassword.trim() ?? '';
+	const remoteBind = remoteOptions?.remoteBind.trim() ?? '';
+	const remoteEnabled = Boolean(remoteOptions?.remoteAccess || remotePassword || remoteOptions?.remoteTunnel);
+	if (remotePassword) args.push(`--remote=${remotePassword}`);
+	else if (remoteEnabled) args.push('--remote');
+	if (remoteEnabled && remoteBind) args.push('--bind', remoteBind);
+	if (remoteOptions?.remoteTunnel) args.push('--tunnel');
+	const displayArgs = args.map(arg => arg.startsWith('--remote=') ? '--remote=********' : arg);
 
-	emit(`Starting: ${cmd} ${args.join(' ')}`);
+	emit(`Starting: ${cmd} ${displayArgs.join(' ')}`);
 
 	const proc = spawn(cmd, args, {
 		cwd: workDir,

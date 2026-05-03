@@ -1,6 +1,10 @@
 export interface PluginSettings {
 	defaultPort: number;
 	defaultTheme: string;
+	remoteAccess: boolean;
+	remotePassword: string;
+	remoteTunnel: boolean;
+	remoteBind: string;
 	initialView: string;
 	colorSchema: string;
 	aspectRatio: string;

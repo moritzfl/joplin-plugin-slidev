@@ -6,6 +6,10 @@ import { InstalledSlidevTheme } from './slideServer';
 
 const defaultPortKey = 'slidev-default-port';
 const defaultThemeKey = 'slidev-default-theme';
+const remoteAccessKey = 'slidev-remote-access';
+const remotePasswordKey = 'slidev-remote-password';
+const remoteTunnelKey = 'slidev-remote-tunnel';
+const remoteBindKey = 'slidev-remote-bind';
 const initialViewKey = 'slidev-initial-view';
 const colorSchemaKey = 'slidev-color-schema';
 const aspectRatioKey = 'slidev-aspect-ratio';
@@ -21,12 +25,17 @@ const embedVideoResourcesKey = 'slidev-embed-video-resources';
 const embedPdfResourcesKey = 'slidev-embed-pdf-resources';
 const slideProgressKey = 'slidev-slide-progress';
 const disableFrontmatterRendererKey = 'slidev-disable-frontmatter-renderer';
+export const workspacePathKey = 'slidev-workspace-path';
 export const openSlidevWorkspaceKey = 'slidev-open-workspace';
 
 export const getSettings = async (): Promise<PluginSettings> => {
 	return {
 		defaultPort: await joplin.settings.value(defaultPortKey),
 		defaultTheme: await joplin.settings.value(defaultThemeKey),
+		remoteAccess: await joplin.settings.value(remoteAccessKey),
+		remotePassword: await joplin.settings.value(remotePasswordKey),
+		remoteTunnel: await joplin.settings.value(remoteTunnelKey),
+		remoteBind: await joplin.settings.value(remoteBindKey),
 		initialView: await joplin.settings.value(initialViewKey),
 		colorSchema: await joplin.settings.value(colorSchemaKey),
 		aspectRatio: await joplin.settings.value(aspectRatioKey),
@@ -52,9 +61,9 @@ export const registerSettings = async (workspaceDir: string, installedThemes: In
 	}, { '': 'Use note theme or Slidev default' });
 
 	await joplin.settings.registerSection(settingsSectionName, {
-		label: 'Slidev Integration',
+		label: 'Slidev Presentation',
 		iconName: 'fas fa-play-circle',
-		description: `Settings for the Slidev presentation plugin. Workspace: ${workspaceDir}`,
+		description: 'Configure how Slidev presentations start, render, export, and share from Joplin.',
 	});
 
 	await joplin.settings.registerSettings({
@@ -67,16 +76,67 @@ export const registerSettings = async (workspaceDir: string, installedThemes: In
 			storage: SettingStorage.File,
 			value: 3030,
 		},
+		[workspacePathKey]: {
+			public: true,
+			advanced: true,
+			section: settingsSectionName,
+			label: 'Slidev workspace path (read-only)',
+			description: 'Informational only. This local folder is managed by the plugin and used for Slidev dependencies, generated slides, and copied attachments. If it is edited, the plugin resets it back to the managed workspace path.',
+			type: SettingItemType.String,
+			storage: SettingStorage.File,
+			value: workspaceDir,
+		},
 		[defaultThemeKey]: {
 			public: true,
 			section: settingsSectionName,
 			label: 'Default Slidev theme',
-			description: 'Visual theme applied to all presentations. Only used when a note does not declare its own theme. Override for a single presentation by adding "theme: <name>" to the note\'s headmatter. The list shows themes installed in the Slidev workspace.',
+			description: 'Visual theme applied to all presentations. Only used when a note does not declare its own theme. Override for a single presentation by adding "theme: [name]" to the note\'s headmatter. The list shows themes installed in the Slidev workspace.',
 			type: SettingItemType.String,
 			storage: SettingStorage.File,
 			value: '',
 			isEnum: true,
 			options: themeOptions,
+		},
+		[remoteAccessKey]: {
+			public: true,
+			advanced: true,
+			section: settingsSectionName,
+			label: 'Enable Slidev remote access',
+			description: 'Pass --remote to Slidev so the server listens on the public host and remote control is enabled. A presenter remote password also enables this automatically.',
+			type: SettingItemType.Bool,
+			storage: SettingStorage.File,
+			value: false,
+		},
+		[remotePasswordKey]: {
+			public: true,
+			advanced: true,
+			section: settingsSectionName,
+			label: 'Presenter remote password',
+			description: 'Optional password passed to Slidev as --remote=[password]. When set, Slidev requires this password before presenter mode can be opened.',
+			type: SettingItemType.String,
+			storage: SettingStorage.Database,
+			secure: true,
+			value: '',
+		},
+		[remoteTunnelKey]: {
+			public: true,
+			advanced: true,
+			section: settingsSectionName,
+			label: 'Enable Slidev remote tunnel',
+			description: 'Pass --tunnel together with --remote to Slidev to open a Cloudflare Quick Tunnel for sharing the local server over the internet.',
+			type: SettingItemType.Bool,
+			storage: SettingStorage.File,
+			value: false,
+		},
+		[remoteBindKey]: {
+			public: true,
+			advanced: true,
+			section: settingsSectionName,
+			label: 'Slidev remote bind address',
+			description: 'Optional address passed to Slidev as --bind when remote access is enabled. Leave empty to use Slidev default 0.0.0.0.',
+			type: SettingItemType.String,
+			storage: SettingStorage.File,
+			value: '',
 		},
 		[initialViewKey]: {
 			public: true,
@@ -282,6 +342,7 @@ export const registerSettings = async (workspaceDir: string, installedThemes: In
 			value: true,
 		},
 	});
+	await joplin.settings.setValue(workspacePathKey, workspaceDir);
 
 	try {
 		await joplin.settings.registerSetting(openSlidevWorkspaceKey, {

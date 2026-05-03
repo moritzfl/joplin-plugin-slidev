@@ -163,6 +163,12 @@ export const showSlidevPresentation = async (
 				},
 				preprocess,
 				extraFiles,
+				{
+					remoteAccess: settings.remoteAccess,
+					remotePassword: settings.remotePassword,
+					remoteTunnel: settings.remoteTunnel,
+					remoteBind: settings.remoteBind,
+				},
 			);
 
 			// Any Slidev process exit while the dialog is open is a failure —

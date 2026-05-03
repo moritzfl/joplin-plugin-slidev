@@ -2,7 +2,7 @@ import joplin from 'api';
 import { ContentScriptType, MenuItemLocation, ToolbarButtonLocation } from 'api/types';
 import { mkdir } from 'fs/promises';
 import { pluginPrefix } from './constants';
-import { registerSettings, getSettings, openSlidevWorkspaceKey } from './settings';
+import { registerSettings, getSettings, openSlidevWorkspaceKey, workspacePathKey } from './settings';
 import { cleanupOrphanedServer, listInstalledSlidevThemes, slidevWorkspaceDir } from './slideServer';
 import { showSlidevPresentation } from './dialog/SlidevDialog';
 import { showSlidevPackageDialog } from './dialog/SlidevPackageDialog';
@@ -108,11 +108,19 @@ joplin.plugins.register({
 		});
 
 		await joplin.settings.onChange(async (event) => {
-			if (!event.keys.includes(openSlidevWorkspaceKey)) return;
-			try {
-				await openSlidevWorkspace();
-			} catch (e) {
-				await showPluginError('Unhandled error in openSlidevWorkspace setting', e);
+			if (event.keys.includes(workspacePathKey)) {
+				const workspaceDir = slidevWorkspaceDir(dataDir);
+				if (await joplin.settings.value(workspacePathKey) !== workspaceDir) {
+					await joplin.settings.setValue(workspacePathKey, workspaceDir);
+				}
+			}
+
+			if (event.keys.includes(openSlidevWorkspaceKey)) {
+				try {
+					await openSlidevWorkspace();
+				} catch (e) {
+					await showPluginError('Unhandled error in openSlidevWorkspace setting', e);
+				}
 			}
 		});
 

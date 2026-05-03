@@ -99,6 +99,13 @@ The startup dialog shows the Slidev server log and, once ready, offers:
 
 The `Initial Slidev view` setting controls what opens automatically. Choose `None (use dialog buttons)` if you prefer to start the server without opening a browser window.
 
+Advanced remote access settings map to Slidev's dev-server CLI options:
+
+- `Enable Slidev remote access`: passes `--remote` so Slidev listens on the public host and enables remote control.
+- `Presenter remote password`: passes `--remote=<password>` and requires the password before presenter mode can be opened.
+- `Enable Slidev remote tunnel`: passes `--remote --tunnel` to open a Cloudflare Quick Tunnel for sharing the local server over the internet.
+- `Slidev remote bind address`: passes `--bind <address>` when remote access is enabled. Leave empty to use Slidev's default `0.0.0.0`.
+
 ## Themes And Addons
 
 Use `Tools -> Manage Slidev Themes/Addons` to browse npm packages tagged for Slidev.
