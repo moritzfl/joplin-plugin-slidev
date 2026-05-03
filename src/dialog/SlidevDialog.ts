@@ -138,7 +138,7 @@ export const showSlidevPresentation = async (
 		try {
 			await dialogs.setHtml(dlg, readyHtml(port, logLines.slice(-MAX_LOG_LINES)));
 			await dialogs.setButtons(dlg, [
-				{ id: 'open-browser', title: 'Open in Browser' },
+				{ id: 'open-browser', title: 'Presentation' },
 				{ id: 'open-presenter', title: 'Presenter' },
 				{ id: 'open-overview', title: 'Overview' },
 				{ id: 'cancel', title: 'Close' },
@@ -196,7 +196,7 @@ export const showSlidevPresentation = async (
 		}
 	})();
 
-	// Open dialog — loop so "Open in Browser" re-opens without closing.
+	// Open dialog — loop so "Presentation" re-opens without closing.
 	let result = await dialogs.open(dlg);
 	while (result?.id === 'open-browser' || result?.id === 'open-presenter' || result?.id === 'open-overview') {
 		if (result.id === 'open-presenter') shell.openExternal(slidevUrl(port, 'presenter'));
