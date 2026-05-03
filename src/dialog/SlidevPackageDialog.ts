@@ -445,46 +445,55 @@ p {
 </body></html>`;
 };
 
-const installingHtml = (packageName: string, logs: string[]) => `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<style>
-body { background:#12121e; color:#d0d0d8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:24px; }
-.spinner { width:22px; height:22px; border:3px solid #2a2a3a; border-top-color:#7ee0ae; border-radius:50%; animation:spin .8s linear infinite; }
-@keyframes spin { to { transform:rotate(360deg); } }
-.header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+const PKG_LOG_STYLE = `
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; overflow:hidden; }
+body { background:#12121e; color:#d0d0d8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+.shell { position:absolute; inset:0; padding:24px; display:flex; flex-direction:column; gap:16px; }
+.header { display:flex; align-items:center; gap:12px; flex-shrink:0; }
 h3 { margin:0; }
-pre { white-space:pre-wrap; background:#0a0a14; color:#7ec89a; padding:12px; border-radius:6px; min-height:280px; max-height:60vh; overflow:auto; }
-</style></head><body>
+.note { color:#b8bfcc; font-size:13px; flex-shrink:0; }
+.note.error { color:#ffb4b4; }
+.log {
+  flex:1; min-height:0; overflow-y:auto;
+  background:#0a0a14; color:#7ec89a;
+  padding:12px; border-radius:6px;
+  font-family:'SF Mono','Fira Code','Cascadia Code',monospace;
+  font-size:11.5px; line-height:1.75; white-space:pre-wrap;
+  scrollbar-color:#7ee0ae rgba(255,255,255,.08);
+}
+.log.error { color:#ffb4b4; }
+.log::-webkit-scrollbar { width:8px; }
+.log::-webkit-scrollbar-track { background:rgba(255,255,255,.08); border-radius:4px; }
+.log::-webkit-scrollbar-thumb { background:#7ee0ae; border-radius:4px; }
+.log::-webkit-scrollbar-thumb:hover { background:#9eefc8; }
+.spinner { width:22px; height:22px; border:3px solid #2a2a3a; border-top-color:#7ee0ae; border-radius:50%; animation:spin .8s linear infinite; flex-shrink:0; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.check { width:26px; height:26px; border-radius:50%; background:#7ee0ae; color:#12121e; display:flex; align-items:center; justify-content:center; font-weight:900; flex-shrink:0; }
+.x { width:26px; height:26px; border-radius:50%; background:#ff6b6b; color:#12121e; display:flex; align-items:center; justify-content:center; font-weight:900; flex-shrink:0; }`;
+
+const installingHtml = (packageName: string, logs: string[]) => `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<style>${PKG_LOG_STYLE}</style></head>
+<body><div class="shell">
 <div class="header"><div class="spinner"></div><h3>Installing ${esc(packageName)}</h3></div>
-<pre>${esc(logs.length ? logs.join('\n') : 'Starting npm install...')}</pre>
-</body></html>`;
+<div class="log">${esc(logs.length ? logs.join('\n') : 'Starting npm install...')}</div>
+</div></body></html>`;
 
 const installCompleteHtml = (packageName: string, logs: string[]) => `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<style>
-body { background:#12121e; color:#d0d0d8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:24px; }
-.check { width:26px; height:26px; border-radius:50%; background:#7ee0ae; color:#12121e; display:flex; align-items:center; justify-content:center; font-weight:900; }
-.header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
-h3 { margin:0; }
-p { color:#b8bfcc; }
-pre { white-space:pre-wrap; background:#0a0a14; color:#7ec89a; padding:12px; border-radius:6px; max-height:48vh; overflow:auto; }
-</style></head><body>
+<style>${PKG_LOG_STYLE}</style></head>
+<body><div class="shell">
 <div class="header"><div class="check">✓</div><h3>${esc(packageName)} installed</h3></div>
-<p>${esc(packageName)} is installed in the Slidev workspace. You can use it immediately in note frontmatter; restart Joplin only if you need the settings dropdown to refresh.</p>
-<pre>${esc(logs.join('\n'))}</pre>
-</body></html>`;
+<p class="note">${esc(packageName)} is installed in the Slidev workspace. You can use it immediately in note frontmatter; restart Joplin only if you need the settings dropdown to refresh.</p>
+<div class="log">${esc(logs.join('\n'))}</div>
+</div></body></html>`;
 
 const installFailedHtml = (packageName: string, logs: string[], error: unknown) => `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<style>
-body { background:#12121e; color:#d0d0d8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:24px; }
-.x { width:26px; height:26px; border-radius:50%; background:#ff6b6b; color:#12121e; display:flex; align-items:center; justify-content:center; font-weight:900; }
-.header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
-h3 { margin:0; }
-p { color:#ffb4b4; }
-pre { white-space:pre-wrap; background:#0a0a14; color:#ffb4b4; padding:12px; border-radius:6px; max-height:48vh; overflow:auto; }
-</style></head><body>
+<style>${PKG_LOG_STYLE}</style></head>
+<body><div class="shell">
 <div class="header"><div class="x">!</div><h3>Could not install ${esc(packageName)}</h3></div>
-<p>${esc(error instanceof Error ? error.message : String(error))}</p>
-<pre>${esc(logs.join('\n'))}</pre>
-</body></html>`;
+<p class="note error">${esc(error instanceof Error ? error.message : String(error))}</p>
+<div class="log error">${esc(logs.join('\n'))}</div>
+</div></body></html>`;
 
 const formValue = (formData: any, key: string): string => {
 	const value = formData?.packagePicker?.[key] ?? formData?.[key];
