@@ -355,17 +355,11 @@ const ensurePlaywrightChromium = async (workDir: string, emit: (line: string) =>
 	emit('playwright-chromium install complete.');
 };
 
-const isSlidevPackageName = (packageName: string) =>
-	/^(?:@[^/]+\/)?(?:slidev-theme-|slidev-addon-|theme-|addon-)[a-z0-9._-]+$/.test(packageName)
-	|| /^@slidev\/(?:theme|addon)-[a-z0-9._-]+$/.test(packageName);
-
 export const installSlidevPackage = (
 	dataDir: string,
 	packageName: string,
 	emit: (line: string) => void,
 ): Promise<void> => {
-	if (!isSlidevPackageName(packageName)) throw new Error(`Not a Slidev theme/addon package: ${packageName}`);
-
 	return runNpmInstallPackage(slidevWorkspaceDir(dataDir), `${packageName}@latest`, emit);
 };
 
