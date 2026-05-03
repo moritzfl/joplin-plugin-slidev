@@ -17,7 +17,7 @@ Write your slides in Joplin, start a local Slidev presentation, open presenter o
 
 ## Requirements
 
-- Joplin Desktop `2.12` or newer.
+- Joplin Desktop `3.5.11` or newer.
 - Node.js and npm available to Joplin.
 - Internet access on first use so the plugin can install Slidev into its local workspace.
 
