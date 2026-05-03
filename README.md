@@ -43,6 +43,7 @@ Use normal Slidev Markdown in a Joplin note:
 ---
 theme: seriph
 title: My Presentation
+
 ---
 
 # First Slide
