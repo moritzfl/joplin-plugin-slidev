@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, spawnSync, ChildProcess } from 'child_process';
 import { writeFile, mkdir, readFile, unlink, access, readdir } from 'fs/promises';
 import { unlinkSync } from 'fs';
 import { join } from 'path';
@@ -92,10 +92,11 @@ export const cleanupOrphanedServer = async (dataDir: string): Promise<void> => {
 			if (!pid || isNaN(pid)) continue;
 
 			try {
-				// Negative PID targets the whole process group.
-				process.platform !== 'win32'
-					? process.kill(-pid, 'SIGKILL')
-					: process.kill(pid, 'SIGKILL');
+				if (process.platform !== 'win32') {
+					process.kill(-pid, 'SIGKILL');
+				} else {
+					spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' });
+				}
 				console.log(`[Slidev] Cleaned up orphaned server process group ${pid}`);
 			} catch {
 				// ESRCH = process already dead; either way we're fine.
@@ -118,9 +119,14 @@ const killServerSync = (server: SlidevServer) => {
 	const pid = server.process.pid;
 	if (!pid) return;
 	try {
-		process.platform !== 'win32'
-			? process.kill(-pid, 'SIGKILL')
-			: server.process.kill('SIGKILL');
+		if (process.platform !== 'win32') {
+			process.kill(-pid, 'SIGKILL');
+		} else {
+			// On Windows with shell:true, spawn creates cmd.exe → node.exe (slidev).
+			// Killing only the shell leaves node.exe running and holding the port.
+			// /T kills the entire process tree rooted at pid.
+			spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' });
+		}
 	} catch { /* already dead */ }
 };
 
