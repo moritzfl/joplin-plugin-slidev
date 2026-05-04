@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-04
+- Fixed Slidev process not being fully terminated on Windows after closing the presentation, leaving the port blocked for subsequent presentations — now uses `taskkill /F /T` to kill the entire process tree
+
 ## [0.1.3] - 2026-05-04
 - Fixed "spawn npm ENOENT" error on Windows by using `npm.cmd` and `shell: true` for npm invocations, and by adding common Windows npm locations (`%APPDATA%\npm`, `C:\Program Files\nodejs`) to the child process PATH
 - Added an advanced "npm executable path" setting to manually specify the npm binary when auto-detection fails
