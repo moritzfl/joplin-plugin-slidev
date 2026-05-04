@@ -21,4 +21,5 @@ export interface PluginSettings {
 	embedPdfResources: boolean;
 	slideProgress: string;
 	disableFrontmatterRenderer: boolean;
+	npmPath: string;
 }

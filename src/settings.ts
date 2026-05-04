@@ -26,6 +26,7 @@ const embedVideoResourcesKey = 'slidev-embed-video-resources';
 const embedPdfResourcesKey = 'slidev-embed-pdf-resources';
 const slideProgressKey = 'slidev-slide-progress';
 const disableFrontmatterRendererKey = 'slidev-disable-frontmatter-renderer';
+const npmPathKey = 'slidev-npm-path';
 export const workspacePathKey = 'slidev-workspace-path';
 export const openSlidevWorkspaceKey = 'slidev-open-workspace';
 
@@ -53,6 +54,7 @@ export const getSettings = async (): Promise<PluginSettings> => {
 		embedPdfResources: await joplin.settings.value(embedPdfResourcesKey),
 		slideProgress: await joplin.settings.value(slideProgressKey),
 		disableFrontmatterRenderer: await joplin.settings.value(disableFrontmatterRendererKey),
+		npmPath: await joplin.settings.value(npmPathKey),
 	};
 };
 
@@ -352,6 +354,16 @@ export const registerSettings = async (workspaceDir: string, installedThemes: In
 			type: SettingItemType.Bool,
 			storage: SettingStorage.File,
 			value: true,
+		},
+		[npmPathKey]: {
+			public: true,
+			advanced: true,
+			section: settingsSectionName,
+			label: 'npm executable path',
+			description: 'Path to the npm executable used to install Slidev dependencies. Leave empty for automatic detection (npm.cmd on Windows, npm on macOS/Linux). Set this if the plugin reports "spawn npm ENOENT" — for example on Windows you might enter "C:\\Program Files\\nodejs\\npm.cmd".',
+			type: SettingItemType.String,
+			storage: SettingStorage.File,
+			value: '',
 		},
 	});
 	await joplin.settings.setValue(workspacePathKey, workspaceDir);

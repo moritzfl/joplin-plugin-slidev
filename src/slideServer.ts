@@ -157,16 +157,23 @@ const registerProcessCleanup = (dataDir: string) => {
 	}
 };
 
+// ---------- npm path configuration ----------
+
+let _configuredNpmPath = '';
+
+export const setNpmPath = (path: string): void => {
+	_configuredNpmPath = path.trim();
+};
+
+const resolveNpmCmd = (): string => {
+	if (_configuredNpmPath) return _configuredNpmPath;
+	return process.platform === 'win32' ? 'npm.cmd' : 'npm';
+};
+
 // ---------- child-process environment ----------
 
 export const buildChildEnv = (): NodeJS.ProcessEnv => {
-	const extraPaths = [
-		'/usr/local/bin',
-		'/opt/homebrew/bin',
-		`${process.env['HOME'] ?? ''}/.nvm/versions/node/current/bin`,
-		`${process.env['HOME'] ?? ''}/.volta/bin`,
-		`${process.env['HOME'] ?? ''}/.fnm/current/bin`,
-	].join(':');
+	const isWindows = process.platform === 'win32';
 
 	// Strip Electron-specific NODE_OPTIONS flags (e.g. --localstorage-file) that
 	// Joplin injects and that plain Node.js doesn't recognise, causing spurious warnings.
@@ -174,6 +181,27 @@ export const buildChildEnv = (): NodeJS.ProcessEnv => {
 		.split(/\s+/)
 		.filter(f => f && !f.startsWith('--localstorage-'))
 		.join(' ') || undefined;
+
+	if (isWindows) {
+		const extraPaths = [
+			`${process.env['APPDATA'] ?? ''}\\npm`,
+			'C:\\Program Files\\nodejs',
+			'C:\\Program Files (x86)\\nodejs',
+		].filter(Boolean).join(';');
+		return {
+			...process.env,
+			PATH: `${extraPaths};${process.env['PATH'] ?? ''}`,
+			NODE_OPTIONS: cleanNodeOptions,
+		};
+	}
+
+	const extraPaths = [
+		'/usr/local/bin',
+		'/opt/homebrew/bin',
+		`${process.env['HOME'] ?? ''}/.nvm/versions/node/current/bin`,
+		`${process.env['HOME'] ?? ''}/.volta/bin`,
+		`${process.env['HOME'] ?? ''}/.fnm/current/bin`,
+	].join(':');
 
 	return {
 		...process.env,
@@ -329,9 +357,10 @@ const runNpmInstallPackage = (
 ): Promise<void> => {
 	const pkgs = Array.isArray(packages) ? packages : [packages];
 	return new Promise((resolve, reject) => {
-		const proc = spawn('npm', ['install', ...pkgs, '--no-audit', '--no-fund'], {
+		const proc = spawn(resolveNpmCmd(), ['install', ...pkgs, '--no-audit', '--no-fund'], {
 			cwd: workDir,
 			env: buildChildEnv(),
+			shell: process.platform === 'win32',
 			stdio: ['ignore', 'pipe', 'pipe'],
 		});
 		const onData = (d: Buffer) =>

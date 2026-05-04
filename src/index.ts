@@ -3,7 +3,7 @@ import { ContentScriptType, MenuItemLocation, ToolbarButtonLocation } from 'api/
 import { mkdir } from 'fs/promises';
 import { pluginPrefix } from './constants';
 import { registerSettings, getSettings, openSlidevWorkspaceKey, workspacePathKey } from './settings';
-import { cleanupOrphanedServer, listInstalledSlidevThemes, slidevWorkspaceDir } from './slideServer';
+import { cleanupOrphanedServer, listInstalledSlidevThemes, setNpmPath, slidevWorkspaceDir } from './slideServer';
 import { showSlidevPresentation } from './dialog/SlidevDialog';
 import { showSlidevPackageDialog } from './dialog/SlidevPackageDialog';
 import { registerSlidevExportModules } from './exporter/registerExportModules';
@@ -63,6 +63,7 @@ joplin.plugins.register({
 		await cleanupOrphanedServer(dataDir);
 
 		await registerSettings(slidevWorkspaceDir(dataDir), await listInstalledSlidevThemes(dataDir));
+		setNpmPath((await getSettings()).npmPath);
 		await registerSlidevExportModules();
 
 		const commandName = `${pluginPrefix}start-presentation`;
