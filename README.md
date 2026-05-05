@@ -61,22 +61,31 @@ Hello from Joplin.
 
 If a note already has Slidev frontmatter, the plugin respects it. Settings such as default theme, color schema, aspect ratio, and line numbers are only injected when the note does not already define that option.
 
-The `Slide progress` setting controls whether slides show a page counter, progress bar, both, or neither. Available values for the setting and for the `slideProgress` frontmatter key:
+The `Slide number` setting controls whether slides show a page counter and where it appears. Override it per presentation with the `slideNumber` frontmatter key:
 
-| Frontmatter value      | Setting label                | Effect                                                      |
-|------------------------|------------------------------|-------------------------------------------------------------|
-| *(empty/absent)*       | Use note or Slidev default   | No overlay added                                            |
-| `slide-number`         | Show slide number            | `3 / 10` counter in the bottom-right corner                 |
-| `progress-bar`         | Show progress bar            | Thin bar that fills as you advance                          |
-| `slide-number-and-bar` | Show number and progress bar | Both counter and bar                                        |
-| `none`                 | Hide progress indicator      | Explicitly off, even if Slidev would default to showing one |
+| `slideNumber` value | Effect                                           |
+|---------------------|--------------------------------------------------|
+| *(empty/absent)*    | Use the plugin setting or Slidev default         |
+| `none`              | Hide the page counter                            |
+| `top-left`          | Show the page counter in the top-left corner     |
+| `top-right`         | Show the page counter in the top-right corner    |
+| `bottom-left`       | Show the page counter in the bottom-left corner  |
+| `bottom-right`      | Show the page counter in the bottom-right corner |
 
-Override per presentation by adding `slideProgress` to the note's frontmatter:
+The `Progress bar` setting controls whether slides show a progress bar and whether it appears at the top or bottom. Override it per presentation with the `slideProgressBar` frontmatter key:
+
+| `slideProgressBar` value | Effect                                   |
+|--------------------------|------------------------------------------|
+| *(empty/absent)*         | Use the plugin setting or Slidev default |
+| `none`                   | Hide the progress bar                    |
+| `top`                    | Show the progress bar at the top         |
+| `bottom`                 | Show the progress bar at the bottom      |
 
 ```yaml
 ---
 theme: seriph
-slideProgress: slide-number-and-bar
+slideNumber: bottom-right
+slideProgressBar: bottom
 
 ---
 ```
@@ -156,6 +165,7 @@ Installed themes can be used immediately in note frontmatter, for example:
 ```yaml
 ---
 theme: seriph
+
 ---
 ```
 
@@ -184,7 +194,8 @@ Open `Tools -> Options -> Slidev Integration` in Joplin.
 - `Color schema`: Use Slidev default, `auto`, `dark`, or `light` when missing from the note.
 - `Aspect ratio`: Use Slidev default, `16:9`, `4:3`, or `1:1` when missing from the note.
 - `Code line numbers`: Show or hide code line numbers when missing from the note.
-- `Slide progress`: Show slide number, progress bar, both, or hide entirely.
+- `Slide number`: Show a page counter (e.g. 3 / 10) and choose its position.
+- `Progress bar`: Show a thin progress bar and choose top or bottom position.
 - `Open Slidev workspace`: Opens the local workspace folder in your file manager.
 - `Hide toolbar button`: Removes the note toolbar button while keeping the menu command.
 - `Embed audio/video/PDF attachments`: Controls whether those attachment types are embedded in slides.

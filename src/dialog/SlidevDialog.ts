@@ -156,7 +156,8 @@ export const showSlidevPresentation = async (
 		embedAudioResources: settings.embedAudioResources,
 		embedVideoResources: settings.embedVideoResources,
 		embedPdfResources: settings.embedPdfResources,
-		slideProgress: settings.slideProgress,
+		slideNumber: settings.slideNumber,
+		slideProgressBar: settings.slideProgressBar,
 	});
 
 	const extraFiles = buildSlidevExtraFiles(settings);

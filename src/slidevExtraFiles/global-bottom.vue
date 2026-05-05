@@ -31,28 +31,29 @@ const fm = computed(() => {
   }
 })
 
-const variant = computed(() => fm.value.slideProgress || slidevCtx.configs.slideProgress || '')
+const numberPos = computed(() => fm.value.slideNumber || slidevCtx.configs.slideNumber || '')
+const barPos = computed(() => fm.value.slideProgressBar || slidevCtx.configs.slideProgressBar || '')
+
+const numberClass = computed(() => {
+  switch (numberPos.value) {
+    case 'bottom-right': return 'absolute bottom-4 right-4'
+    case 'bottom-left': return 'absolute bottom-4 left-4'
+    case 'top-right': return 'absolute top-4 right-4'
+    case 'top-left': return 'absolute top-4 left-4'
+    default: return ''
+  }
+})
+
 </script>
 
 <template>
-  <template v-if="variant === 'slide-number'">
-    <div class="absolute bottom-4 right-4 z-9999 text-sm opacity-80 pointer-events-none">
-      {{ $slidev.nav.currentPage }} / {{ $slidev.nav.total }}
-    </div>
-  </template>
-
-  <template v-if="variant === 'progress-bar'">
-    <div class="absolute bottom-0 left-0 right-0 z-9999 h-2 pointer-events-none"
-         :style="{ background: $slidev.nav.currentPage <= 0 || $slidev.nav.total <= 0 ? 'transparent' : `linear-gradient(to right, currentColor ${Math.round(($slidev.nav.currentPage / $slidev.nav.total) * 100)}%, transparent 0)` }">
-    </div>
-  </template>
-
-  <template v-if="variant === 'slide-number-and-bar'">
-    <div class="absolute bottom-4 right-4 z-9999 text-sm opacity-80 pointer-events-none">
-      {{ $slidev.nav.currentPage }} / {{ $slidev.nav.total }}
-    </div>
-    <div class="absolute bottom-0 left-0 right-0 z-9999 h-2 pointer-events-none"
-         :style="{ background: $slidev.nav.currentPage <= 0 || $slidev.nav.total <= 0 ? 'transparent' : `linear-gradient(to right, currentColor ${Math.round(($slidev.nav.currentPage / $slidev.nav.total) * 100)}%, transparent 0)` }">
-    </div>
-  </template>
+  <div v-if="numberClass" :class="numberClass" class="z-9999 text-sm opacity-80 pointer-events-none">
+    {{ $slidev.nav.currentPage }} / {{ $slidev.nav.total }}
+  </div>
+  <div v-if="barPos === 'bottom'" style="position: absolute; bottom: 0; left: 0; right: 0; height: 0.5rem; z-index: 9999; pointer-events: none;"
+       :style="{ background: $slidev.nav.currentPage <= 0 || $slidev.nav.total <= 0 ? 'transparent' : `linear-gradient(to right, currentColor ${Math.round(($slidev.nav.currentPage / $slidev.nav.total) * 100)}%, transparent 0)` }">
+  </div>
+  <div v-if="barPos === 'top'" style="position: absolute; top: 0; left: 0; right: 0; height: 0.5rem; z-index: 9999; pointer-events: none;"
+       :style="{ background: $slidev.nav.currentPage <= 0 || $slidev.nav.total <= 0 ? 'transparent' : `linear-gradient(to right, currentColor ${Math.round(($slidev.nav.currentPage / $slidev.nav.total) * 100)}%, transparent 0)` }">
+  </div>
 </template>

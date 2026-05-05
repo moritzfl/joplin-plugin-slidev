@@ -19,7 +19,8 @@ export interface PluginSettings {
 	embedAudioResources: boolean;
 	embedVideoResources: boolean;
 	embedPdfResources: boolean;
-	slideProgress: string;
+	slideNumber: string;
+	slideProgressBar: string;
 	disableFrontmatterRenderer: boolean;
 	npmPath: string;
 }

@@ -23,7 +23,8 @@ interface MarkdownPreprocessorOptions {
 	embedAudioResources: boolean;
 	embedVideoResources: boolean;
 	embedPdfResources: boolean;
-	slideProgress: string;
+	slideNumber: string;
+	slideProgressBar: string;
 	skipMediaStopper?: boolean;
 	// When set, resources are written here with relative ./resources/ URLs instead of
 	// the Vite-served /resources/ paths used by the dev/export server.
@@ -267,8 +268,11 @@ const applyDefaultHeadmatterSettings = (markdown: string, options: MarkdownPrepr
 	applyBoolean('selectable', options.selectable);
 	applyBoolean('contextMenu', options.contextMenu);
 	applyBoolean('overviewSnapshots', options.overviewSnapshots);
-	if (options.slideProgress) {
-		result = applyDefaultHeadmatterSetting(result, 'slideProgress', options.slideProgress);
+	if (options.slideNumber) {
+		result = applyDefaultHeadmatterSetting(result, 'slideNumber', options.slideNumber);
+	}
+	if (options.slideProgressBar) {
+		result = applyDefaultHeadmatterSetting(result, 'slideProgressBar', options.slideProgressBar);
 	}
 	const fm = parseFrontmatter(result);
 	if (fm) {

@@ -24,7 +24,8 @@ const disableMarkdownCompatFixesKey = 'slidev-disable-markdown-compat-fixes';
 const embedAudioResourcesKey = 'slidev-embed-audio-resources';
 const embedVideoResourcesKey = 'slidev-embed-video-resources';
 const embedPdfResourcesKey = 'slidev-embed-pdf-resources';
-const slideProgressKey = 'slidev-slide-progress';
+const slideNumberKey = 'slidev-slide-number';
+const slideProgressBarKey = 'slidev-slide-progress-bar';
 const disableFrontmatterRendererKey = 'slidev-disable-frontmatter-renderer';
 const npmPathKey = 'slidev-npm-path';
 export const workspacePathKey = 'slidev-workspace-path';
@@ -52,7 +53,8 @@ export const getSettings = async (): Promise<PluginSettings> => {
 		embedAudioResources: await joplin.settings.value(embedAudioResourcesKey),
 		embedVideoResources: await joplin.settings.value(embedVideoResourcesKey),
 		embedPdfResources: await joplin.settings.value(embedPdfResourcesKey),
-		slideProgress: await joplin.settings.value(slideProgressKey),
+		slideNumber: await joplin.settings.value(slideNumberKey),
+		slideProgressBar: await joplin.settings.value(slideProgressBarKey),
 		disableFrontmatterRenderer: await joplin.settings.value(disableFrontmatterRendererKey),
 		npmPath: await joplin.settings.value(npmPathKey),
 	};
@@ -279,21 +281,38 @@ export const registerSettings = async (workspaceDir: string, installedThemes: In
 				false: 'Disable overview snapshots',
 			},
 		},
-		[slideProgressKey]: {
+		[slideNumberKey]: {
 			public: true,
 			section: settingsSectionName,
-			label: 'Slide progress',
-			description: 'Show a small current-slide indicator during presentations. Set to "none" to explicitly hide the overlay, even when a note does not define its own slideProgress. Override per-presentation by adding slideProgress to the note\'s frontmatter (e.g. slideProgress: none).',
+			label: 'Slide number',
+			description: 'Show a page counter (e.g. 3 / 10) on each slide. Override per-presentation by adding slideNumber to the note\'s frontmatter.',
 			type: SettingItemType.String,
 			storage: SettingStorage.File,
 			value: '',
 			isEnum: true,
 			options: {
 				'': 'Use note or Slidev default',
-				'none': 'Hide progress indicator',
-				'slide-number': 'Show slide number',
-				'progress-bar': 'Show progress bar',
-				'slide-number-and-bar': 'Show number and progress bar',
+				'none': 'Hidden',
+				'bottom-right': 'Bottom right',
+				'bottom-left': 'Bottom left',
+				'top-right': 'Top right',
+				'top-left': 'Top left',
+			},
+		},
+		[slideProgressBarKey]: {
+			public: true,
+			section: settingsSectionName,
+			label: 'Progress bar',
+			description: 'Show a thin progress bar that fills as you advance through slides. Override per-presentation by adding slideProgressBar to the note\'s frontmatter.',
+			type: SettingItemType.String,
+			storage: SettingStorage.File,
+			value: '',
+			isEnum: true,
+			options: {
+				'': 'Use note or Slidev default',
+				'none': 'Hidden',
+				'bottom': 'Bottom',
+				'top': 'Top',
 			},
 		},
 		[hideToolbarButtonKey]: {
