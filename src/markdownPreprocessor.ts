@@ -2,6 +2,8 @@ import joplin from 'api';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import MarkdownIt from 'markdown-it';
+import * as yaml from 'js-yaml';
+import mediaStopperScript from './slidevExtraFiles/media-stopper.vue';
 
 // Joplin resource IDs are 32-char lowercase hex strings.
 const RESOURCE_ID_RE = /[a-f0-9]{32}/;
@@ -191,64 +193,63 @@ const exportResources = async (
 };
 
 // ---------------------------------------------------------------------------
-// Markdown sanitisation for Slidev/Vite
+// Frontmatter parsing (YAML-based)
 // ---------------------------------------------------------------------------
 
+const FRONTMATTER_RE = /^(\s*)---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
+
+interface ParsedFrontmatter {
+	prefix: string;
+	data: Record<string, any>;
+	body: string;
+}
+
+const parseFrontmatter = (markdown: string): ParsedFrontmatter | null => {
+	const match = markdown.match(FRONTMATTER_RE);
+	if (!match) return null;
+	try {
+		const data = yaml.load(match[2]) as Record<string, any>;
+		if (typeof data !== 'object' || data === null) return null;
+		return { prefix: match[1], data, body: markdown.slice(match[0].length) };
+	} catch {
+		return null;
+	}
+};
+
+const serializeFrontmatter = (fm: ParsedFrontmatter): string => {
+	const yamlStr = yaml.dump(fm.data, { lineWidth: -1, quotingType: "'" as const, forceQuotes: false }).replace(/\n$/, '');
+	return `${fm.prefix}---\n${yamlStr}\n---\n${fm.body}`;
+};
+
 const normalizeFrontmatter = (markdown: string): string => {
-	const frontmatterMatch = markdown.match(/^(\s*)---\r?\n([\s\S]*?)\r?\n---(?=\r?\n|$)/);
-	if (!frontmatterMatch) return markdown;
-
-	// Slidev's frontmatter parser is stricter than Joplin users expect. Blank
-	// metadata lines such as "---\n\ntheme: seriph\n\n---" can break parsing.
-	const normalizedFrontmatter = frontmatterMatch[2]
-		.split(/\r?\n/)
-		.filter(line => line.trim() !== '')
-		.join('\n');
-
-	const replacement = `${frontmatterMatch[1]}---\n${normalizedFrontmatter}\n---`;
-	return markdown.replace(frontmatterMatch[0], replacement);
-};
-
-const applyDefaultTheme = (markdown: string, theme: string): string => {
-	const trimmedTheme = theme.trim();
-	if (!trimmedTheme) return markdown;
-
-	const frontmatterMatch = markdown.match(/^(\s*)---\r?\n([\s\S]*?)\r?\n---(?=\r?\n|$)/);
-	if (!frontmatterMatch) return `---\ntheme: ${trimmedTheme}\n---\n\n${markdown}`;
-
-	const frontmatter = frontmatterMatch[2];
-	if (/^theme\s*:/m.test(frontmatter)) return markdown;
-
-	const replacement = `${frontmatterMatch[1]}---\n${frontmatter}\ntheme: ${trimmedTheme}\n---`;
-	return markdown.replace(frontmatterMatch[0], replacement);
-};
-
-const applyDefaultColorSchema = (markdown: string, colorSchema: string): string => {
-	const schema = colorSchema.trim();
-	if (!['auto', 'dark', 'light'].includes(schema)) return markdown;
-
-	const frontmatterMatch = markdown.match(/^(\s*)---\r?\n([\s\S]*?)\r?\n---(?=\r?\n|$)/);
-	if (!frontmatterMatch) return `---\ncolorSchema: ${schema}\n---\n\n${markdown}`;
-
-	const frontmatter = frontmatterMatch[2];
-	if (/^colorSchema\s*:/m.test(frontmatter)) return markdown;
-
-	const replacement = `${frontmatterMatch[1]}---\n${frontmatter}\ncolorSchema: ${schema}\n---`;
-	return markdown.replace(frontmatterMatch[0], replacement);
+	const fm = parseFrontmatter(markdown);
+	// Parsing and re-serialising via yaml.dump automatically strips blank lines.
+	return fm ? serializeFrontmatter(fm) : markdown;
 };
 
 const applyDefaultHeadmatterSetting = (markdown: string, key: string, value: string): string => {
 	const sanitizedValue = value.trim();
 	if (!sanitizedValue) return markdown;
+	let parsedValue: string | boolean = sanitizedValue;
+	if (sanitizedValue === 'true') parsedValue = true;
+	else if (sanitizedValue === 'false') parsedValue = false;
+	const fm = parseFrontmatter(markdown);
+	if (!fm) return `---\n${key}: ${sanitizedValue}\n---\n\n${markdown}`;
+	if (key in fm.data) return markdown;
+	fm.data[key] = parsedValue;
+	return serializeFrontmatter(fm);
+};
 
-	const frontmatterMatch = markdown.match(/^(\s*)---\r?\n([\s\S]*?)\r?\n---(?=\r?\n|$)/);
-	if (!frontmatterMatch) return `---\n${key}: ${sanitizedValue}\n---\n\n${markdown}`;
+const applyDefaultTheme = (markdown: string, theme: string): string => {
+	const trimmedTheme = theme.trim();
+	if (!trimmedTheme) return markdown;
+	return applyDefaultHeadmatterSetting(markdown, 'theme', trimmedTheme);
+};
 
-	const frontmatter = frontmatterMatch[2];
-	if (new RegExp(`^${key}\\s*:`, 'm').test(frontmatter)) return markdown;
-
-	const replacement = `${frontmatterMatch[1]}---\n${frontmatter}\n${key}: ${sanitizedValue}\n---`;
-	return markdown.replace(frontmatterMatch[0], replacement);
+const applyDefaultColorSchema = (markdown: string, colorSchema: string): string => {
+	const schema = colorSchema.trim();
+	if (!['auto', 'dark', 'light'].includes(schema)) return markdown;
+	return applyDefaultHeadmatterSetting(markdown, 'colorSchema', schema);
 };
 
 const applyDefaultHeadmatterSettings = (markdown: string, options: MarkdownPreprocessorOptions): string => {
@@ -266,49 +267,36 @@ const applyDefaultHeadmatterSettings = (markdown: string, options: MarkdownPrepr
 	applyBoolean('selectable', options.selectable);
 	applyBoolean('contextMenu', options.contextMenu);
 	applyBoolean('overviewSnapshots', options.overviewSnapshots);
-	result = applyDefaultHeadmatterSetting(result, 'editor', 'false');
+	if (options.slideProgress) {
+		result = applyDefaultHeadmatterSetting(result, 'slideProgress', options.slideProgress);
+	}
+	const fm = parseFrontmatter(result);
+	if (fm) {
+		fm.data.editor = false;
+		result = serializeFrontmatter(fm);
+	} else {
+		result = `---\neditor: false\n---\n\n${result}`;
+	}
 	return result;
 };
 
-const MEDIA_STOPPER_SCRIPT = `
-<script setup>
-import { onMounted, onUnmounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
-
-const stopMedia = () => {
-  for (const el of document.querySelectorAll('audio, video')) {
-    el.pause()
-    el.currentTime = 0
-  }
-}
-
-const route = useRoute()
-let unwatch
-
-onMounted(() => {
-  unwatch = watch(() => route.fullPath, stopMedia)
-  window.addEventListener('hashchange', stopMedia)
-  window.addEventListener('popstate', stopMedia)
-})
-
-onUnmounted(() => {
-  unwatch?.()
-  window.removeEventListener('hashchange', stopMedia)
-  window.removeEventListener('popstate', stopMedia)
-})
-</script>
-`;
+// ---------------------------------------------------------------------------
+// Media stopper injection
+// ---------------------------------------------------------------------------
 
 const injectMediaStopper = (markdown: string): string => {
 	if (!/<(?:audio|video)\b/i.test(markdown)) return markdown;
 
-	const frontmatterMatch = markdown.match(/^(\s*---\r?\n[\s\S]*?\r?\n---)(?=\r?\n|$)/);
-	if (!frontmatterMatch) return `${MEDIA_STOPPER_SCRIPT}\n${markdown}`;
+	const fm = parseFrontmatter(markdown);
+	if (!fm) return `\n${mediaStopperScript}\n${markdown}`;
 
-	return markdown.replace(frontmatterMatch[0], `${frontmatterMatch[0]}\n${MEDIA_STOPPER_SCRIPT}`);
+	return serializeFrontmatter({ ...fm, body: `\n${mediaStopperScript}${fm.body}` });
 };
 
-// Regex that matches a complete fenced code block (``` or ~~~).
+// ---------------------------------------------------------------------------
+// Markdown sanitisation for Slidev/Vite
+// ---------------------------------------------------------------------------
+
 const FENCE_RE = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1[ \t]*$/gm;
 
 const applyOutsideFences = (markdown: string, fn: (chunk: string) => string): string => {

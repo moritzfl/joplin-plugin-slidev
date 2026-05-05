@@ -61,6 +61,26 @@ Hello from Joplin.
 
 If a note already has Slidev frontmatter, the plugin respects it. Settings such as default theme, color schema, aspect ratio, and line numbers are only injected when the note does not already define that option.
 
+The `Slide progress` setting controls whether slides show a page counter, progress bar, both, or neither. Available values for the setting and for the `slideProgress` frontmatter key:
+
+| Frontmatter value      | Setting label                | Effect                                                      |
+|------------------------|------------------------------|-------------------------------------------------------------|
+| *(empty/absent)*       | Use note or Slidev default   | No overlay added                                            |
+| `slide-number`         | Show slide number            | `3 / 10` counter in the bottom-right corner                 |
+| `progress-bar`         | Show progress bar            | Thin bar that fills as you advance                          |
+| `slide-number-and-bar` | Show number and progress bar | Both counter and bar                                        |
+| `none`                 | Hide progress indicator      | Explicitly off, even if Slidev would default to showing one |
+
+Override per presentation by adding `slideProgress` to the note's frontmatter:
+
+```yaml
+---
+theme: seriph
+slideProgress: slide-number-and-bar
+
+---
+```
+
 ## Presenter Notes
 
 Write presenter notes using Slidev's HTML comment syntax:
@@ -164,7 +184,7 @@ Open `Tools -> Options -> Slidev Integration` in Joplin.
 - `Color schema`: Use Slidev default, `auto`, `dark`, or `light` when missing from the note.
 - `Aspect ratio`: Use Slidev default, `16:9`, `4:3`, or `1:1` when missing from the note.
 - `Code line numbers`: Show or hide code line numbers when missing from the note.
-- `Slide progress`: Show slide number, progress bar, or both.
+- `Slide progress`: Show slide number, progress bar, both, or hide entirely.
 - `Open Slidev workspace`: Opens the local workspace folder in your file manager.
 - `Hide toolbar button`: Removes the note toolbar button while keeping the menu command.
 - `Embed audio/video/PDF attachments`: Controls whether those attachment types are embedded in slides.

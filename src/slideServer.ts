@@ -3,6 +3,7 @@ import { writeFile, mkdir, readFile, unlink, access, readdir } from 'fs/promises
 import { unlinkSync } from 'fs';
 import { join } from 'path';
 import * as net from 'net';
+import { EXTRA_FILE_PATHS } from './slidevExtraFiles';
 
 export interface SlidevServer {
 	process: ChildProcess;
@@ -418,6 +419,14 @@ const prepareSlideshowDir = async (
 		? await preprocessMarkdown(markdown, workDir)
 		: markdown;
 	await writeFile(join(workDir, 'slides.md'), processedMarkdown, 'utf-8');
+
+	// Remove stale extra files from previous runs that may no longer be needed.
+	for (const relativePath of EXTRA_FILE_PATHS) {
+		if (!extraFiles || !(relativePath in extraFiles)) {
+			try { await unlink(join(workDir, relativePath)); } catch { /* already gone */ }
+		}
+	}
+
 	if (extraFiles) {
 		for (const [relativePath, content] of Object.entries(extraFiles)) {
 			const fullPath = join(workDir, relativePath);

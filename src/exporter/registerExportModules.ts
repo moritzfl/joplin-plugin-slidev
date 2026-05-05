@@ -153,8 +153,8 @@ const registerSlidevExportModule = async (
 						embedAudioResources: settings.embedAudioResources,
 						embedVideoResources: settings.embedVideoResources,
 						embedPdfResources: settings.embedPdfResources,
-						slideProgress: '',
-							skipMediaStopper: true,
+						slideProgress: settings.slideProgress,
+						skipMediaStopper: true,
 					}),
 					buildSlidevExtraFiles(settings),
 				);
@@ -205,7 +205,7 @@ const registerSlidevMarkdownBundleExportModule = async () => {
 					embedAudioResources: settings.embedAudioResources,
 					embedVideoResources: settings.embedVideoResources,
 					embedPdfResources: settings.embedPdfResources,
-					slideProgress: '',
+					slideProgress: settings.slideProgress,
 					skipMediaStopper: true,
 					bundleOutputDir: outputDir,
 				});

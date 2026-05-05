@@ -1,0 +1,4 @@
+body.presenter-controlled-navigation #page-root [class*="bottom-0"],
+body.presenter-controlled-navigation #slidev-controls {
+  display: none !important;
+}
