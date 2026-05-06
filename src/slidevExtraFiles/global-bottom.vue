@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ComputedRef } from 'vue'
-import { inject, computed } from 'vue'
+import { inject, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
 interface SlideRoute {
   no: number
@@ -43,6 +44,23 @@ const numberClass = computed(() => {
     default: return ''
   }
 })
+
+// Stop all media on every slide navigation so audio/video from a previous
+// slide does not keep playing in the background.  This lives here rather
+// than in slides.md because global-bottom.vue is mounted for the entire
+// lifetime of the presentation, whereas a <script setup> block injected
+// into slides.md is part of slide 1's component and gets unmounted when
+// the user navigates away.
+const route = useRoute()
+const stopMedia = () => {
+  for (const el of document.querySelectorAll<HTMLMediaElement>('audio, video')) {
+    el.pause()
+    el.currentTime = 0
+  }
+}
+watch(() => route.fullPath, stopMedia)
+window.addEventListener('hashchange', stopMedia)
+window.addEventListener('popstate', stopMedia)
 
 </script>
 

@@ -3,7 +3,6 @@ import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import MarkdownIt from 'markdown-it';
 import * as yaml from 'js-yaml';
-import mediaStopperScript from './slidevExtraFiles/media-stopper.vue';
 import { parseSlidevMatter, serializeSlidevMatter, updateSlidevMatter } from './slidevMatter';
 
 // Joplin resource IDs are 32-char lowercase hex strings.
@@ -26,7 +25,6 @@ interface MarkdownPreprocessorOptions {
 	embedPdfResources: boolean;
 	slideNumber: string;
 	slideProgressBar: string;
-	skipMediaStopper?: boolean;
 	// When set, resources are written here with relative ./resources/ URLs instead of
 	// the Vite-served /resources/ paths used by the dev/export server.
 	bundleOutputDir?: string;
@@ -301,19 +299,6 @@ const applyDefaultHeadmatterSettings = (markdown: string, options: MarkdownPrepr
 };
 
 // ---------------------------------------------------------------------------
-// Media stopper injection
-// ---------------------------------------------------------------------------
-
-const injectMediaStopper = (markdown: string): string => {
-	if (!/<(?:audio|video)\b/i.test(markdown)) return markdown;
-
-	const fm = parseFrontmatter(markdown);
-	if (!fm) return `\n${mediaStopperScript}\n${markdown}`;
-
-	return serializeFrontmatter({ ...fm, body: `\n${mediaStopperScript}${fm.body}` });
-};
-
-// ---------------------------------------------------------------------------
 // Markdown sanitisation for Slidev/Vite
 // ---------------------------------------------------------------------------
 
@@ -364,7 +349,6 @@ export const makeMarkdownPreprocessor = (options: MarkdownPreprocessorOptions) =
 		result = applyDefaultColorSchema(result, String(options.colorSchema ?? ''));
 		result = applyDefaultHeadmatterSettings(result, options);
 		result = await exportResources(result, workDir, options);
-		if (!options.skipMediaStopper) result = injectMediaStopper(result);
 		if (!options.disableCompatFixes) result = sanitiseForSlidev(result);
 		return result;
 	};

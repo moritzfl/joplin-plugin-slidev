@@ -264,13 +264,19 @@ export const buildChildEnv = (): NodeJS.ProcessEnv => {
 		};
 	}
 
+	const home = process.env['HOME'] ?? '';
 	const extraPaths = [
 		'/usr/local/bin',
 		'/opt/homebrew/bin',
-		`${process.env['HOME'] ?? ''}/.nvm/versions/node/current/bin`,
-		`${process.env['HOME'] ?? ''}/.volta/bin`,
-		`${process.env['HOME'] ?? ''}/.fnm/current/bin`,
-	].join(':');
+		// NVM sets NVM_BIN to the active Node.js bin dir when a shell is sourced.
+		// Fall back to a glob-free fixed path only as a last resort (not reliable).
+		process.env['NVM_BIN'],
+		// FNM sets FNM_NODE_PATH to the active Node.js bin dir.
+		process.env['FNM_NODE_PATH'],
+		// Volta
+		process.env['VOLTA_HOME'] ? join(process.env['VOLTA_HOME'], 'bin') : undefined,
+		`${home}/.volta/bin`,
+	].filter(Boolean).join(':');
 
 	return {
 		...process.env,

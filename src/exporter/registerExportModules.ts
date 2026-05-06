@@ -154,9 +154,8 @@ const registerSlidevExportModule = async (
 						embedVideoResources: settings.embedVideoResources,
 						embedPdfResources: settings.embedPdfResources,
 						slideNumber: settings.slideNumber,
-						slideProgressBar: settings.slideProgressBar,
-						skipMediaStopper: true,
-					}),
+					slideProgressBar: settings.slideProgressBar,
+				}),
 					buildSlidevExtraFiles(settings),
 				);
 				await progress.done(outputPath);
@@ -207,9 +206,8 @@ const registerSlidevMarkdownBundleExportModule = async () => {
 					embedVideoResources: settings.embedVideoResources,
 					embedPdfResources: settings.embedPdfResources,
 					slideNumber: settings.slideNumber,
-					slideProgressBar: settings.slideProgressBar,
-					skipMediaStopper: true,
-					bundleOutputDir: outputDir,
+				slideProgressBar: settings.slideProgressBar,
+				bundleOutputDir: outputDir,
 				});
 
 				// workDir is only used by exportResources when bundleOutputDir is absent,
