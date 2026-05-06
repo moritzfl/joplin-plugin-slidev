@@ -10,6 +10,16 @@
 	"repository_url": "https://github.com/moritzfl/joplin-plugin-slidev",
 	"keywords": ["slides", "slidev", "presentation", "slidedeck"],
 	"categories": ["integrations"],
+	"screenshots": [
+		{
+			"src": "images/screenshot-running-presentation.png",
+			"label": "Screenshot: A Slidev presentation running from a Joplin note."
+		},
+		{
+			"src": "images/screenshot-marketplace.png",
+			"label": "Screenshot: The Slidev theme and addon marketplace inside Joplin."
+		}
+	],
 	"icons": {
 		"16": "icons/icon-16.png",
 		"32": "icons/icon-32.png",

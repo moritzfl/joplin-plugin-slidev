@@ -33,7 +33,7 @@ The plugin installs Slidev into Joplin's plugin data directory. Your notes are n
 
 On first start, setup can take a little while because npm installs Slidev and the default themes. Later starts reuse the local workspace.
 
-![Slidev running from Joplin](docs/slidev-running-presentation.png)
+![Slidev running from Joplin](images/screenshot-running-presentation.png)
 
 ## Writing Slides
 
@@ -141,7 +141,7 @@ Enable `Presenter-controlled navigation` in advanced settings to keep the public
 
 Use `Tools -> Manage Slidev Themes/Addons` to browse npm packages tagged for Slidev.
 
-![Slidev theme and addon marketplace](docs/slidev-marketplace.png)
+![Slidev theme and addon marketplace](images/screenshot-marketplace.png)
 
 The store shows:
 

@@ -119,7 +119,7 @@ async function copyAssets() {
 		}
 	}
 
-	const rootAssetDirs = ['icons'];
+	const rootAssetDirs = ['icons', 'images'];
 	for (const rootAssetDir of rootAssetDirs) {
 		const assetRoot = join(rootDir, rootAssetDir);
 		if (!existsSync(assetRoot)) continue;
