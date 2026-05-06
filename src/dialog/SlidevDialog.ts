@@ -2,7 +2,7 @@ import joplin from 'api';
 import { Resolver } from 'dns/promises';
 // electron is available at runtime inside Joplin (Electron app) but has no bundled types.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { shell } = require('electron') as { shell: { openExternal: (url: string) => void } };
+const { shell } = require('electron') as { shell: { openExternal: (url: string) => Promise<void> } };
 import { pluginPrefix } from '../constants';
 import {
 	findAvailablePort,
@@ -86,6 +86,10 @@ const getHandle = async (): Promise<string> => {
 	return handle;
 };
 
+// Prevents concurrent invocations: a second call while a presentation is
+// already open is silently ignored rather than corrupting the shared dialog.
+let presentationActive = false;
+
 // ---------- public entry point ----------
 
 export const showSlidevPresentation = async (
@@ -93,6 +97,9 @@ export const showSlidevPresentation = async (
 	settings: PluginSettings,
 	dataDir: string,
 ): Promise<void> => {
+	if (presentationActive) return;
+	presentationActive = true;
+
 	const dlg = await getHandle();
 
 	const port = await findAvailablePort(settings.defaultPort);
@@ -168,7 +175,7 @@ export const showSlidevPresentation = async (
 		if (cancelled || serverReady) return;
 		serverReady = true;
 		if (settings.initialView !== 'none') {
-			try { shell.openExternal(initialUrl); } catch { /* ignore */ }
+			try { await shell.openExternal(initialUrl); } catch { /* ignore */ }
 		}
 		try {
 			await dialogs.setHtml(dlg, readyHtml(port, logLines.slice(-MAX_LOG_LINES), tunnelEntryUrl, tunnelEnabled, tunnelStatus));
@@ -255,23 +262,27 @@ export const showSlidevPresentation = async (
 		|| result?.id === 'open-overview'
 		|| result?.id === 'open-tunnel-entry'
 	) {
-		if (result.id === 'open-presenter') shell.openExternal(slidevUrl(port, 'presenter'));
-		else if (result.id === 'open-overview') shell.openExternal(slidevUrl(port, 'overview'));
+		if (result.id === 'open-presenter') await shell.openExternal(slidevUrl(port, 'presenter')).catch(() => {});
+		else if (result.id === 'open-overview') await shell.openExternal(slidevUrl(port, 'overview')).catch(() => {});
 		else if (result.id === 'open-tunnel-entry') {
 			if (!tunnelEntryUrl) {
 				setTunnelStatus('Cloudflare tunnel entry is not ready yet. Wait until Slidev logs "remote via tunnel".');
 			} else if (await isHostnameResolvable(tunnelEntryUrl)) {
-				shell.openExternal(tunnelEntryUrl);
+				await shell.openExternal(tunnelEntryUrl).catch(() => {});
 			} else {
 				setTunnelStatus('Cloudflare tunnel host is not resolvable yet. Wait a few seconds and try again.');
 			}
 		}
-		else shell.openExternal(slidevUrl(port, 'slides'));
+		else await shell.openExternal(slidevUrl(port, 'slides')).catch(() => {});
 		result = await dialogs.open(dlg);
 	}
 	cancelled = true;
 
-	await serverTask;
-	if (statusClearTimer) clearTimeout(statusClearTimer);
-	if (server) stopSlidevServer(server);
+	try {
+		await serverTask;
+	} finally {
+		if (statusClearTimer) clearTimeout(statusClearTimer);
+		if (server) stopSlidevServer(server);
+		presentationActive = false;
+	}
 };

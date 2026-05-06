@@ -32,8 +32,12 @@ const fm = computed(() => {
   }
 })
 
-const numberPos = computed(() => fm.value.slideNumber || slidevCtx.configs.slideNumber || '')
-const barPos = computed(() => fm.value.slideProgressBar || slidevCtx.configs.slideProgressBar || '')
+// Use optional chaining: if inject() ever returns undefined (e.g. outside a
+// Slidev context or after an upstream rename) these fall back gracefully to ''
+// rather than throwing at runtime.
+const configs = computed(() => (slidevCtx as any)?.configs ?? {})
+const numberPos = computed(() => fm.value.slideNumber || configs.value.slideNumber || '')
+const barPos = computed(() => fm.value.slideProgressBar || configs.value.slideProgressBar || '')
 
 const numberClass = computed(() => {
   switch (numberPos.value) {

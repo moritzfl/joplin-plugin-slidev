@@ -10,6 +10,9 @@ const stopViewerNavigation = (event) => {
   if (event.type === 'keydown' && navKeys.has(event.key)) {
     event.preventDefault()
     event.stopImmediatePropagation()
+  // 'slide-container' is the id Slidev gives the main clickable slide area.
+  // If clicks stop being blocked after a Slidev upgrade, check whether this id changed.
+  // Verified against @slidev/cli 0.50.x.
   } else if (event.type === 'pointerdown' && target?.id === 'slide-container') {
     event.preventDefault()
     event.stopImmediatePropagation()

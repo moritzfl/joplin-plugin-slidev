@@ -1,1 +1,5 @@
+/* Hides Slidev's built-in "Edit Notes" button so it does not appear in the
+   viewer when the plugin is running. The selector targets the button by its
+   title attribute, which is an implementation detail of Slidev's UI.
+   Verified against @slidev/cli 0.50.x — recheck after Slidev upgrades. */
 button[title="Edit Notes"] { display: none !important; }

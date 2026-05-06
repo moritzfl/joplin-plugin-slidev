@@ -9,7 +9,7 @@ import { installSlidevPackage, updateSlidevCore, readInstalledSlidevVersion, lis
 
 // electron is available at runtime inside Joplin (Electron app) but has no bundled types.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { shell } = require('electron') as { shell: { openExternal: (url: string) => void } };
+const { shell } = require('electron') as { shell: { openExternal: (url: string) => Promise<void> } };
 
 const dialogs = joplin.views.dialogs;
 const dialogId = `${pluginPrefix}slidevPackageDialog`;
@@ -645,7 +645,7 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 				continue;
 			}
 			try {
-				shell.openExternal(packageNpmUrl(selectedPackage));
+				await shell.openExternal(packageNpmUrl(selectedPackage));
 				message = `Opened npm page for ${packageName}.`;
 			} catch (e) {
 				message = `Could not open npm page for ${packageName}: ${e instanceof Error ? e.message : String(e)}`;
