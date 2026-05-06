@@ -293,6 +293,7 @@ const applyDefaultHeadmatterSettings = (markdown: string, options: MarkdownPrepr
 		result = applyDefaultHeadmatterSetting(result, 'slideProgressBar', options.slideProgressBar);
 	}
 	return updateSlidevMatter(result, parseFrontmatterData, dumpFrontmatterData, (data) => {
+		if ('editor' in data) return false;
 		data.editor = false;
 		return true;
 	});
