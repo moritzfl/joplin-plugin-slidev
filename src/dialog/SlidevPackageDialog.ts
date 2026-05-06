@@ -620,7 +620,7 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 				? 'theme'
 				: formValue(result.formData, 'kind') === 'addon' ? 'addon' : 'theme';
 		kind = nextKind;
-		query = formValue(result.formData, 'query') || query;
+		query = formValue(result.formData, 'query') ?? query;
 		const packageName = formValue(result.formData, 'packageName');
 
 		if (result.id === 'theme' || result.id === 'addon') {
