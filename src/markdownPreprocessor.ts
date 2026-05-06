@@ -4,6 +4,7 @@ import { join } from 'path';
 import MarkdownIt from 'markdown-it';
 import * as yaml from 'js-yaml';
 import mediaStopperScript from './slidevExtraFiles/media-stopper.vue';
+import { parseSlidevMatter, serializeSlidevMatter, updateSlidevMatter } from './slidevMatter';
 
 // Joplin resource IDs are 32-char lowercase hex strings.
 const RESOURCE_ID_RE = /[a-f0-9]{32}/;
@@ -194,33 +195,29 @@ const exportResources = async (
 };
 
 // ---------------------------------------------------------------------------
-// Frontmatter parsing (YAML-based)
+// Headmatter parsing. Detection lives in slidevMatter.ts so it stays
+// aligned with the preview renderer and Slidev's parser.
 // ---------------------------------------------------------------------------
 
-const FRONTMATTER_RE = /^(\s*)---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
+const parseFrontmatterData = (raw: string): Record<string, any> | null => {
+	const data = yaml.load(raw) as Record<string, any> | null | undefined;
+	if (data === null || data === undefined) return {};
+	return typeof data === 'object' ? data : null;
+};
 
-interface ParsedFrontmatter {
-	prefix: string;
-	data: Record<string, any>;
-	body: string;
-}
-
-const parseFrontmatter = (markdown: string): ParsedFrontmatter | null => {
-	const match = markdown.match(FRONTMATTER_RE);
-	if (!match) return null;
+const parseFrontmatter = (markdown: string) => {
 	try {
-		const data = yaml.load(match[2]) as Record<string, any>;
-		if (typeof data !== 'object' || data === null) return null;
-		return { prefix: match[1], data, body: markdown.slice(match[0].length) };
+		return parseSlidevMatter(markdown, parseFrontmatterData);
 	} catch {
 		return null;
 	}
 };
 
-const serializeFrontmatter = (fm: ParsedFrontmatter): string => {
-	const yamlStr = yaml.dump(fm.data, { lineWidth: -1, quotingType: "'" as const, forceQuotes: false }).replace(/\n$/, '');
-	return `${fm.prefix}---\n${yamlStr}\n---\n${fm.body}`;
-};
+const dumpFrontmatterData = (data: Record<string, any>) =>
+	yaml.dump(data, { lineWidth: -1, quotingType: "'" as const, forceQuotes: false }).replace(/\n$/, '');
+
+const serializeFrontmatter = (fm: NonNullable<ReturnType<typeof parseFrontmatter>>): string =>
+	serializeSlidevMatter(fm, dumpFrontmatterData);
 
 const normalizeFrontmatter = (markdown: string): string => {
 	const fm = parseFrontmatter(markdown);
@@ -234,11 +231,11 @@ const applyDefaultHeadmatterSetting = (markdown: string, key: string, value: str
 	let parsedValue: string | boolean = sanitizedValue;
 	if (sanitizedValue === 'true') parsedValue = true;
 	else if (sanitizedValue === 'false') parsedValue = false;
-	const fm = parseFrontmatter(markdown);
-	if (!fm) return `---\n${key}: ${sanitizedValue}\n---\n\n${markdown}`;
-	if (key in fm.data) return markdown;
-	fm.data[key] = parsedValue;
-	return serializeFrontmatter(fm);
+	return updateSlidevMatter(markdown, parseFrontmatterData, dumpFrontmatterData, (data) => {
+		if (key in data) return false;
+		data[key] = parsedValue;
+		return true;
+	});
 };
 
 const applyDefaultTheme = (markdown: string, theme: string): string => {
@@ -274,14 +271,10 @@ const applyDefaultHeadmatterSettings = (markdown: string, options: MarkdownPrepr
 	if (options.slideProgressBar) {
 		result = applyDefaultHeadmatterSetting(result, 'slideProgressBar', options.slideProgressBar);
 	}
-	const fm = parseFrontmatter(result);
-	if (fm) {
-		fm.data.editor = false;
-		result = serializeFrontmatter(fm);
-	} else {
-		result = `---\neditor: false\n---\n\n${result}`;
-	}
-	return result;
+	return updateSlidevMatter(result, parseFrontmatterData, dumpFrontmatterData, (data) => {
+		data.editor = false;
+		return true;
+	});
 };
 
 // ---------------------------------------------------------------------------

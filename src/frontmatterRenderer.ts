@@ -1,13 +1,8 @@
 // Markdown-it content script: hides YAML frontmatter from Joplin's note
 // viewer.  Matches both the document-level frontmatter at the top and
 // per-slide frontmatter anywhere in the note.
-//
-// Mirrors Slidev's parser frontmatter split:
-//   - A line that starts with --- is a slide separator.
-//   - It becomes frontmatter when the fourth character is not - and the next
-//     line is non-empty. This includes named separators such as ---section2.
-//   - Scan until a closing line whose trimEnd() is exactly ---; blank lines
-//     inside the body are fine.
+
+import { isSlidevMatterClosingLine, isSlidevMatterOpeningLine } from './slidevMatter';
 
 export default function (_context: unknown) {
 	return {
@@ -21,22 +16,19 @@ export default function (_context: unknown) {
 					endLine: number,
 					silent: boolean,
 				) {
-					// Keep this in sync with Slidev's packages/parser/src/core.ts.
 					const openPos = state.bMarks[startLine];
 					const openEnd = state.eMarks[startLine];
 					const openLine = state.src.slice(openPos, openEnd).trimEnd();
-					if (!openLine.startsWith('---') || openLine[3] === '-') return false;
 
 					const bodyStart = startLine + 1;
 					if (bodyStart >= endLine) return false;
 
-					// The line immediately after the separator must be non-empty.
-					if (state.src.slice(state.bMarks[bodyStart], state.eMarks[bodyStart]).trim() === '') return false;
+					const firstBodyLine = state.src.slice(state.bMarks[bodyStart], state.eMarks[bodyStart]);
+					if (!isSlidevMatterOpeningLine(openLine, firstBodyLine)) return false;
 
-					// Scan for the closing ---; blank lines within are fine.
 					let closingLine = -1;
 					for (let i = bodyStart; i < endLine; i++) {
-						if (state.src.slice(state.bMarks[i], state.eMarks[i]).trimEnd() === '---') {
+						if (isSlidevMatterClosingLine(state.src.slice(state.bMarks[i], state.eMarks[i]))) {
 							closingLine = i;
 							break;
 						}

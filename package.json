@@ -8,6 +8,8 @@
     "build-and-debug": "bash scripts/build-and-debug.sh",
     "debug-targets": "node scripts/list-debug-targets.mjs",
     "puppeteer:joplin": "node scripts/puppeteer-joplin.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "tsc": "tsc --noEmit"
   },
   "repository": {
@@ -33,7 +35,8 @@
     "markdown-it": "^14.1.1",
     "puppeteer-core": "^24.42.0",
     "tar": "^7.5.13",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
   },
   "dependencies": {
     "js-yaml": "^4.1.1"
