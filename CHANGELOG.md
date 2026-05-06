@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-06
+- Fixed layout issues caused by empty fenced code blocks and resource references inside code blocks
+- Fixed the package search field not being clearable
+- Fixed changes to the npm path setting requiring a Joplin restart to take effect
+- Fixed leftover Slidev processes not being cleaned up, blocking the port for subsequent presentations
+- Improved theme and add-on store load responsiveness
+
 ## [0.2.0] - 2026-05-06
 - Added configurable slide number positions via the `Slide number` setting and `slideNumber` frontmatter key
 - Added configurable progress bar positions via the `Progress bar` setting and `slideProgressBar` frontmatter key
