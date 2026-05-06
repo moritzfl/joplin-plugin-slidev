@@ -5,13 +5,14 @@ import * as esbuild from 'esbuild';
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import * as crypto from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import * as glob from 'glob';
 import * as tar from 'tar';
 import { copyFile, mkdir, stat } from 'node:fs/promises';
 
-// @ts-ignore
-const __filename = new URL(import.meta.url).pathname;
+// @ts-ignore build.mts runs as ESM even though the plugin tsconfig is CommonJS.
+const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const rootDir = resolve(__dirname);
