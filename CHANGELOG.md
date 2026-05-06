@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-06
+- Added configurable slide number positions via the `Slide number` setting and `slideNumber` frontmatter key
+- Added configurable progress bar positions via the `Progress bar` setting and `slideProgressBar` frontmatter key
+- Replaced the previous combined `slideProgress` option with separate slide number and progress bar controls
+
 ## [0.1.4] - 2026-05-04
 - Fixed Slidev process not being fully terminated on Windows after closing the presentation, leaving the port blocked for subsequent presentations — now uses `taskkill /F /T` to kill the entire process tree
 
