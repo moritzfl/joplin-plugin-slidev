@@ -685,7 +685,7 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 				continue;
 			}
 
-			const displayName = '@slidev/cli + bundled themes';
+			const displayName = '@slidev/cli + default theme';
 			const logs: string[] = [];
 			await dialogs.setHtml(dlg, installingHtml(displayName, logs));
 			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
