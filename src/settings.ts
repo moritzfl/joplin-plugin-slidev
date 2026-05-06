@@ -27,7 +27,7 @@ const embedPdfResourcesKey = 'slidev-embed-pdf-resources';
 const slideNumberKey = 'slidev-slide-number';
 const slideProgressBarKey = 'slidev-slide-progress-bar';
 const disableFrontmatterRendererKey = 'slidev-disable-frontmatter-renderer';
-const npmPathKey = 'slidev-npm-path';
+export const npmPathKey = 'slidev-npm-path';
 export const workspacePathKey = 'slidev-workspace-path';
 export const openSlidevWorkspaceKey = 'slidev-open-workspace';
 

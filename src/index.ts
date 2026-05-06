@@ -2,7 +2,7 @@ import joplin from 'api';
 import { ContentScriptType, MenuItemLocation, ToolbarButtonLocation } from 'api/types';
 import { mkdir } from 'fs/promises';
 import { pluginPrefix } from './constants';
-import { registerSettings, getSettings, openSlidevWorkspaceKey, workspacePathKey } from './settings';
+import { registerSettings, getSettings, openSlidevWorkspaceKey, workspacePathKey, npmPathKey } from './settings';
 import { cleanupOrphanedServer, listInstalledSlidevThemes, setNpmPath, slidevWorkspaceDir } from './slideServer';
 import { showSlidevPresentation } from './dialog/SlidevDialog';
 import { showSlidevPackageDialog } from './dialog/SlidevPackageDialog';
@@ -122,6 +122,10 @@ joplin.plugins.register({
 				} catch (e) {
 					await showPluginError('Unhandled error in openSlidevWorkspace setting', e);
 				}
+			}
+
+			if (event.keys.includes(npmPathKey)) {
+				setNpmPath(await joplin.settings.value(npmPathKey));
 			}
 		});
 
