@@ -35,7 +35,14 @@ interface ExportedResource {
 	mime: string;
 }
 
-const FENCE_RE = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1[ \t]*$/gm;
+// Matches fenced code blocks (backticks or tildes, 3+ chars), including empty
+// ones. Used only to skip code blocks so preprocessing does not rewrite their
+// content.
+//
+// This is intentionally a little stricter than Slidev's slide-splitting parser:
+// the closing fence must match the opener exactly, except for trailing spaces.
+// That is sufficient for normal Markdown fences and avoids over-matching.
+const FENCE_RE = /^(`{3,}|~{3,})[^\n]*\n([\s\S]*?\n)?\1[ \t]*$/gm;
 
 const applyOutsideFences = (markdown: string, fn: (chunk: string) => string): string => {
 	let result = '';
