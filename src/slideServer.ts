@@ -68,16 +68,60 @@ export const waitForServerReady = (port: number, timeoutMs = 60000): Promise<boo
 
 const PID_FILE_PREFIX = 'slidev-server-';
 const PID_FILE_SUFFIX = '.pid';
-const LEGACY_PID_FILE = 'slidev-server.pid';
 
 const pidFileName = (pid: number) => `${PID_FILE_PREFIX}${pid}${PID_FILE_SUFFIX}`;
 
-const writePidFile = async (dataDir: string, pid: number) =>
-	writeFile(join(dataDir, pidFileName(pid)), String(pid), 'utf-8');
+interface PidFileMeta {
+	pid: number;
+	workDir: string;
+	cmd: string;
+}
+
+const writePidFile = async (dataDir: string, pid: number, workDir: string, cmd: string) => {
+	const meta: PidFileMeta = { pid, workDir, cmd };
+	await writeFile(join(dataDir, pidFileName(pid)), JSON.stringify(meta), 'utf-8');
+};
 
 const removePidFileSync = (dataDir: string, pid: number | undefined) => {
 	if (!pid) return;
 	try { unlinkSync(join(dataDir, pidFileName(pid))); } catch { /* already gone */ }
+};
+
+/**
+ * Returns true when the running process identified by `pid` still looks like
+ * the Slidev child we spawned: its working directory matches `expectedWorkDir`
+ * and its command path contains `expectedCmd`.  On any error we return false
+ * (conservative: don't kill an unknown process).
+ */
+const pidBelongsToPlugin = (pid: number, expectedWorkDir: string, expectedCmd: string): boolean => {
+	try {
+		if (process.platform === 'linux') {
+			// /proc/<pid>/cwd is a symlink to the process's working directory.
+			const { readlinkSync } = require('fs') as typeof import('fs');
+			const cwd = readlinkSync(`/proc/${pid}/cwd`);
+			if (cwd !== expectedWorkDir) return false;
+			// /proc/<pid>/cmdline is NUL-separated; first token is the executable.
+			const { readFileSync } = require('fs') as typeof import('fs');
+			const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf-8').split('\0')[0];
+			return cmdline.includes(expectedCmd);
+		} else if (process.platform === 'darwin') {
+			// ps -p <pid> -o comm= prints just the command name/path.
+			const result = spawnSync('ps', ['-p', String(pid), '-o', 'comm='], { encoding: 'utf-8' });
+			if (result.status !== 0) return false;
+			const comm = result.stdout.trim();
+			return comm.includes(expectedCmd);
+		} else {
+			// Windows: use wmic to query the executable path.
+			const result = spawnSync(
+				'wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'ExecutablePath'],
+				{ encoding: 'utf-8' },
+			);
+			if (result.status !== 0) return false;
+			return result.stdout.includes(expectedCmd);
+		}
+	} catch {
+		return false;
+	}
 };
 
 /** Call once at plugin startup to kill any server left over from a previous crash. */
@@ -85,12 +129,30 @@ export const cleanupOrphanedServer = async (dataDir: string): Promise<void> => {
 	try {
 		const entries = await readdir(dataDir);
 		const pidFiles = entries.filter(name =>
-			(name.startsWith(PID_FILE_PREFIX) && name.endsWith(PID_FILE_SUFFIX)) || name === LEGACY_PID_FILE,
+			name.startsWith(PID_FILE_PREFIX) && name.endsWith(PID_FILE_SUFFIX),
 		);
 		for (const pidFile of pidFiles) {
 			const raw = await readFile(join(dataDir, pidFile), 'utf-8');
-			const pid = parseInt(raw.trim(), 10);
+
+			let meta: PidFileMeta;
+			try {
+				meta = JSON.parse(raw) as PidFileMeta;
+			} catch {
+				// Unreadable/corrupt file – remove and skip.
+				await unlink(join(dataDir, pidFile)).catch(() => {/* ignore */});
+				continue;
+			}
+			const { pid, workDir, cmd } = meta;
 			if (!pid || isNaN(pid)) continue;
+
+			// Verify the live process still matches before killing it.  This
+			// prevents accidentally killing an unrelated process that inherited
+			// the same PID after a reboot or rapid process cycling.
+			if (!pidBelongsToPlugin(pid, workDir, cmd)) {
+				console.log(`[Slidev] Skipping PID ${pid} – process no longer matches plugin metadata`);
+				await unlink(join(dataDir, pidFile)).catch(() => {/* ignore */});
+				continue;
+			}
 
 			try {
 				if (process.platform !== 'win32') {
@@ -526,8 +588,8 @@ export const startSlidevServer = async (
 	const server: SlidevServer = { process: proc, port, workDir, dataDir };
 	activeServers.add(server);
 
-	// Persist PID so a crash-recovery cleanup on next startup can find it.
-	if (proc.pid) await writePidFile(dataDir, proc.pid);
+	// Persist PID + metadata so crash-recovery cleanup can verify ownership.
+	if (proc.pid) await writePidFile(dataDir, proc.pid, workDir, cmd);
 
 	return server;
 };
