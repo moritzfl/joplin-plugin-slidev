@@ -37,9 +37,31 @@ interface ExportedResource {
 	mime: string;
 }
 
+const FENCE_RE = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1[ \t]*$/gm;
+
+const applyOutsideFences = (markdown: string, fn: (chunk: string) => string): string => {
+	let result = '';
+	let last = 0;
+	for (const match of markdown.matchAll(FENCE_RE)) {
+		result += fn(markdown.slice(last, match.index));
+		result += match[0];
+		last = match.index! + match[0].length;
+	}
+	return result + fn(markdown.slice(last));
+};
+
 // ---------------------------------------------------------------------------
 // Joplin resource export
 // ---------------------------------------------------------------------------
+
+const collectResourceIds = (markdown: string): Set<string> => {
+	const ids = new Set<string>();
+	applyOutsideFences(markdown, chunk => {
+		for (const m of chunk.matchAll(RESOURCE_REF_RE)) ids.add(m[1]);
+		return chunk;
+	});
+	return ids;
+};
 
 const getResourceBuffer = async (id: string): Promise<Buffer | null> => {
 	try {
@@ -82,42 +104,44 @@ const rewriteResourceReferences = (
 	resources: Map<string, ExportedResource>,
 	options: MarkdownPreprocessorOptions,
 ) => {
-	let result = markdown;
+	return applyOutsideFences(markdown, chunk => {
+		let result = chunk;
 
-	result = result.replace(
-		new RegExp(`!\\[([^\\]]*)\\]\\(:\/(${RESOURCE_ID_RE.source})\\)`, 'g'),
-		(match, alt: string, id: string) => {
-			const resource = resources.get(id);
-			return resource ? `![${alt}](${resource.url})` : match;
-		},
-	);
+		result = result.replace(
+			new RegExp(`!\\[([^\\]]*)\\]\\(:\/(${RESOURCE_ID_RE.source})\\)`, 'g'),
+			(match, alt: string, id: string) => {
+				const resource = resources.get(id);
+				return resource ? `![${alt}](${resource.url})` : match;
+			},
+		);
 
-	result = result.replace(
-		new RegExp(`\\[([^\\]]*)\\]\\(:\/(${RESOURCE_ID_RE.source})\\)`, 'g'),
-		(match, label: string, id: string) => {
-			const resource = resources.get(id);
-			if (!resource) return match;
+		result = result.replace(
+			new RegExp(`\\[([^\\]]*)\\]\\(:\/(${RESOURCE_ID_RE.source})\\)`, 'g'),
+			(match, label: string, id: string) => {
+				const resource = resources.get(id);
+				if (!resource) return match;
 
-			const safeUrl = escapeHtml(resource.url);
-			const safeLabel = escapeHtml(label || 'Open attachment');
-			if (options.embedAudioResources && resource.mime.startsWith('audio/')) {
-				return `<audio src="${safeUrl}" controls style="width: 100%;"></audio>`;
-			}
-			if (options.embedVideoResources && resource.mime.startsWith('video/')) {
-				return `<video src="${safeUrl}" controls style="max-width: 100%; max-height: 70vh;"></video>`;
-			}
-			if (options.embedPdfResources && resource.mime === 'application/pdf') {
-				return `<embed src="${safeUrl}" type="application/pdf" title="${safeLabel}" style="width: 100%; height: 75vh;" />`;
-			}
-			return `[${label}](${resource.url})`;
-		},
-	);
+				const safeUrl = escapeHtml(resource.url);
+				const safeLabel = escapeHtml(label || 'Open attachment');
+				if (options.embedAudioResources && resource.mime.startsWith('audio/')) {
+					return `<audio src="${safeUrl}" controls style="width: 100%;"></audio>`;
+				}
+				if (options.embedVideoResources && resource.mime.startsWith('video/')) {
+					return `<video src="${safeUrl}" controls style="max-width: 100%; max-height: 70vh;"></video>`;
+				}
+				if (options.embedPdfResources && resource.mime === 'application/pdf') {
+					return `<embed src="${safeUrl}" type="application/pdf" title="${safeLabel}" style="width: 100%; height: 75vh;" />`;
+				}
+				return `[${label}](${resource.url})`;
+			},
+		);
 
-	for (const [id, resource] of resources) {
-		result = result.replace(new RegExp(`:\/${id}`, 'g'), resource.url);
-	}
+		for (const [id, resource] of resources) {
+			result = result.replace(new RegExp(`:\/${id}`, 'g'), resource.url);
+		}
 
-	return result;
+		return result;
+	});
 };
 
 const exportResources = async (
@@ -125,8 +149,7 @@ const exportResources = async (
 	workDir: string,
 	options: MarkdownPreprocessorOptions,
 ): Promise<string> => {
-	const ids = new Set<string>();
-	for (const m of markdown.matchAll(RESOURCE_REF_RE)) ids.add(m[1]);
+	const ids = collectResourceIds(markdown);
 	if (ids.size === 0) return markdown;
 
 	const resourceDir = options.bundleOutputDir
@@ -293,19 +316,6 @@ const injectMediaStopper = (markdown: string): string => {
 // ---------------------------------------------------------------------------
 // Markdown sanitisation for Slidev/Vite
 // ---------------------------------------------------------------------------
-
-const FENCE_RE = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1[ \t]*$/gm;
-
-const applyOutsideFences = (markdown: string, fn: (chunk: string) => string): string => {
-	let result = '';
-	let last = 0;
-	for (const match of markdown.matchAll(FENCE_RE)) {
-		result += fn(markdown.slice(last, match.index));
-		result += match[0];
-		last = match.index! + match[0].length;
-	}
-	return result + fn(markdown.slice(last));
-};
 
 const rewriteAsteriskBullets = (markdown: string): string =>
 	(() => {
