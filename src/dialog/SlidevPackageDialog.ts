@@ -56,6 +56,15 @@ interface PackageMetadata {
 	homepage?: string;
 }
 
+interface SearchState {
+	packages: NpmSearchObject[];
+	installedPackages: Map<string, InstalledSlidevPackage>;
+	githubStars: Map<string, number>;
+	packageMetadata: Map<string, PackageMetadata>;
+	message: string;
+	isLoading: boolean;
+}
+
 let handle: string | undefined;
 
 const getHandle = async () => {
@@ -64,6 +73,18 @@ const getHandle = async () => {
 };
 
 const esc = escHtml;
+
+const FETCH_TIMEOUT_MS = 8000;
+
+const fetchWithTimeout = async (url: string, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> => {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		return await fetch(url, { ...init, signal: init.signal ?? controller.signal });
+	} finally {
+		clearTimeout(timeout);
+	}
+};
 
 const cleanDescription = (value: string | undefined): string => {
 	const cleaned = (value ?? 'No description provided.')
@@ -107,7 +128,7 @@ const parseCompactNumber = (value: string): number | null => {
 
 const getGithubStarsFromPage = async (repoSlug: string): Promise<number | null> => {
 	try {
-		const response = await fetch(`https://github.com/${repoSlug}`);
+		const response = await fetchWithTimeout(`https://github.com/${repoSlug}`);
 		if (!response.ok) return null;
 		const html = await response.text();
 		const match = html.match(/social-count[^>]*>\s*([0-9,.]+[kKmM]?)\s*</)
@@ -120,7 +141,7 @@ const getGithubStarsFromPage = async (repoSlug: string): Promise<number | null> 
 
 const getGithubStarsFromShields = async (repoSlug: string): Promise<number | null> => {
 	try {
-		const response = await fetch(`https://img.shields.io/github/stars/${repoSlug}.json`);
+		const response = await fetchWithTimeout(`https://img.shields.io/github/stars/${repoSlug}.json`);
 		if (!response.ok) return null;
 		const data = await response.json() as ShieldsBadgeResponse;
 		return parseCompactNumber(data.message ?? data.value ?? '');
@@ -135,7 +156,7 @@ const getGithubStarsFallback = async (repoSlug: string): Promise<number | null> 
 const getGithubStars = async (repoSlug: string): Promise<number | null> => {
 	if (starCache.has(repoSlug)) return starCache.get(repoSlug) ?? null;
 	try {
-		const response = await fetch(`https://api.github.com/repos/${repoSlug}`, {
+		const response = await fetchWithTimeout(`https://api.github.com/repos/${repoSlug}`, {
 			headers: { Accept: 'application/vnd.github+json' },
 		});
 		if (!response.ok) {
@@ -174,7 +195,7 @@ const repositoryUrl = (repository: NpmPackageMetadataResponse['repository']): st
 const getPackageMetadata = async (pkg: NpmSearchObject['package']): Promise<PackageMetadata> => {
 	if (packageMetadataCache.has(pkg.name)) return packageMetadataCache.get(pkg.name) ?? {};
 	try {
-		const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name).replace(/%2F/g, '/')}`);
+		const response = await fetchWithTimeout(`https://registry.npmjs.org/${encodeURIComponent(pkg.name).replace(/%2F/g, '/')}`);
 		if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
 		const data = await response.json() as NpmPackageMetadataResponse;
 		const metadata = {
@@ -216,7 +237,7 @@ const loadGithubStars = async (packages: NpmSearchObject[], packageMetadata: Map
 
 const fetchLatestSlidevVersion = async (): Promise<string | null> => {
 	try {
-		const response = await fetch('https://registry.npmjs.org/@slidev/cli/latest');
+		const response = await fetchWithTimeout('https://registry.npmjs.org/@slidev/cli/latest');
 		if (!response.ok) return null;
 		const data = await response.json() as { version?: string };
 		return typeof data.version === 'string' ? data.version : null;
@@ -230,7 +251,7 @@ const searchPackages = async (kind: PackageKind, query: string): Promise<NpmSear
 	const text = query.trim()
 		? `keywords:${keyword} ${query.trim()}`
 		: `keywords:${keyword}`;
-	const response = await fetch(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(text)}&size=20`);
+	const response = await fetchWithTimeout(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(text)}&size=20`);
 	if (!response.ok) throw new Error(`npm search failed: ${response.status} ${response.statusText}`);
 	const data = await response.json() as NpmSearchResponse;
 	return data.objects ?? [];
@@ -246,8 +267,15 @@ const searchHtml = (
 	installedSlidevVersion: string | null,
 	latestSlidevVersion: string | null,
 	message = '',
+	isLoading = false,
 ) => {
-	const cards = packages.length === 0
+	const cards = isLoading
+		? `<div class="empty">
+			<div class="loader" aria-hidden="true"></div>
+			<h2>Loading packages</h2>
+			<p>Fetching npm results and package metadata. This can take a few seconds on slow networks.</p>
+		</div>`
+		: packages.length === 0
 		? `<div class="empty">
 			<div class="empty-icon">⌕</div>
 			<h2>No packages found</h2>
@@ -392,6 +420,12 @@ p {
 }
 .empty { grid-column:1 / -1; text-align:center; padding:70px 20px; color:#b8bfcc; }
 .empty-icon { font-size:56px; color:#7ee0ae; }
+.loader {
+  width:46px; height:46px; margin:0 auto 12px; border-radius:50%;
+  border:4px solid rgba(126,224,174,.22); border-top-color:#7ee0ae;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
 .empty h2 { color:#fff; margin:8px 0; }
 @media (max-width:720px) {
   .shell { padding:20px; }
@@ -485,7 +519,7 @@ const trySearchPackages = async (kind: PackageKind, query: string): Promise<{ pa
 const installedPackageMap = async (dataDir: string, kind: PackageKind) =>
 	new Map((await listInstalledSlidevPackages(dataDir, kind)).map(pkg => [pkg.packageName, pkg]));
 
-const updateSearchState = async (dataDir: string, kind: PackageKind, query: string) => {
+const updateSearchState = async (dataDir: string, kind: PackageKind, query: string): Promise<SearchState> => {
 	const searchResult = await trySearchPackages(kind, query);
 	const installedPackages = await installedPackageMap(dataDir, kind);
 	const packageMetadata = await loadPackageMetadata(searchResult.packages);
@@ -496,8 +530,20 @@ const updateSearchState = async (dataDir: string, kind: PackageKind, query: stri
 		githubStars,
 		packageMetadata,
 		message: searchResult.message,
+		isLoading: false,
 	};
 };
+
+const loadingSearchState = (kind: PackageKind, query: string): SearchState => ({
+	packages: [],
+	installedPackages: new Map(),
+	githubStars: new Map(),
+	packageMetadata: new Map(),
+	message: query.trim()
+		? `Searching ${kind === 'theme' ? 'themes' : 'addons'} for "${query.trim()}"...`
+		: `Loading ${kind === 'theme' ? 'themes' : 'addons'} from npm...`,
+	isLoading: true,
+});
 
 export const showSlidevPackageDialog = async (dataDir: string) => {
 	const dlg = await getHandle();
@@ -505,17 +551,56 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 
 	let kind: PackageKind = 'theme';
 	let query = '';
-	let state = await updateSearchState(dataDir, kind, query);
+	let state = loadingSearchState(kind, query);
 	let packages = state.packages;
 	let installedPackages = state.installedPackages;
 	let githubStars = state.githubStars;
 	let packageMetadata = state.packageMetadata;
 	let message = state.message;
+	let isLoading = state.isLoading;
 	let installedSlidevVersion = await readInstalledSlidevVersion(dataDir);
-	let latestSlidevVersion = await fetchLatestSlidevVersion();
+	let latestSlidevVersion: string | null = null;
+	let loadToken = 0;
+
+	const renderCurrent = () => dialogs.setHtml(
+		dlg,
+		searchHtml(kind, query, packages, installedPackages, githubStars, packageMetadata, installedSlidevVersion, latestSlidevVersion, message, isLoading),
+	);
+
+	const applyState = (nextState: SearchState) => {
+		packages = nextState.packages;
+		installedPackages = nextState.installedPackages;
+		githubStars = nextState.githubStars;
+		packageMetadata = nextState.packageMetadata;
+		message = nextState.message;
+		isLoading = nextState.isLoading;
+	};
+
+	const startLoadingSearchState = (nextKind: PackageKind, nextQuery: string, messagePrefix = '') => {
+		const token = ++loadToken;
+		state = loadingSearchState(nextKind, nextQuery);
+		if (messagePrefix) state.message = `${messagePrefix} ${state.message}`;
+		applyState(state);
+		updateSearchState(dataDir, nextKind, nextQuery).then((nextState) => {
+			if (token !== loadToken || kind !== nextKind || query !== nextQuery) return;
+			applyState(messagePrefix ? { ...nextState, message: nextState.message.replace('Found', messagePrefix.trim() + ' Found') } : nextState);
+			renderCurrent().catch(() => {});
+		}).catch((e) => {
+			if (token !== loadToken || kind !== nextKind || query !== nextQuery) return;
+			message = `Could not load packages: ${e instanceof Error ? e.message : String(e)}`;
+			isLoading = false;
+			renderCurrent().catch(() => {});
+		});
+	};
+
+	startLoadingSearchState(kind, query);
+	fetchLatestSlidevVersion().then((version) => {
+		latestSlidevVersion = version;
+		renderCurrent().catch(() => {});
+	}).catch(() => {});
 
 	while (true) {
-		await dialogs.setHtml(dlg, searchHtml(kind, query, packages, installedPackages, githubStars, packageMetadata, installedSlidevVersion, latestSlidevVersion, message));
+		await renderCurrent();
 		await dialogs.setButtons(dlg, [
 			{ id: 'theme', title: kind === 'theme' ? 'Themes ✓' : 'Themes' },
 			{ id: 'addon', title: kind === 'addon' ? 'Addons ✓' : 'Addons' },
@@ -540,22 +625,12 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 
 		if (result.id === 'theme' || result.id === 'addon') {
 			query = '';
-			state = await updateSearchState(dataDir, kind, query);
-			packages = state.packages;
-			installedPackages = state.installedPackages;
-			githubStars = state.githubStars;
-			packageMetadata = state.packageMetadata;
-			message = state.message.replace('Found', `Browsing ${kind === 'theme' ? 'themes' : 'addons'}. Found`);
+			startLoadingSearchState(kind, query, `Browsing ${kind === 'theme' ? 'themes' : 'addons'}.`);
 			continue;
 		}
 
 		if (result.id === 'submit') {
-			state = await updateSearchState(dataDir, kind, query);
-			packages = state.packages;
-			installedPackages = state.installedPackages;
-			githubStars = state.githubStars;
-			packageMetadata = state.packageMetadata;
-			message = state.message;
+			startLoadingSearchState(kind, query);
 			continue;
 		}
 
@@ -601,11 +676,7 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 			}
 			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
 			await openPromise;
-			state = await updateSearchState(dataDir, kind, query);
-			packages = state.packages;
-			installedPackages = state.installedPackages;
-			githubStars = state.githubStars;
-			packageMetadata = state.packageMetadata;
+			startLoadingSearchState(kind, query);
 		}
 
 		if (result.id === 'update-slidev') {
