@@ -2,15 +2,12 @@
 // viewer.  Matches both the document-level frontmatter at the top and
 // per-slide frontmatter anywhere in the note.
 //
-// Detection rule (Slidev spec):
-//   - Line is exactly ---
-//   - The very next line must be non-empty.
-//     A blank line after --- is explicitly "risky" per the Slidev spec and
-//     the preferred style has content start immediately on the next line.
-//     This also distinguishes a frontmatter block from a plain --- slide
-//     separator.
-//   - Scan until the next --- line; blank lines *within* the body are fine.
-//   - A line that is exactly --- closes the block.
+// Mirrors Slidev's parser frontmatter split:
+//   - A line that starts with --- is a slide separator.
+//   - It becomes frontmatter when the fourth character is not - and the next
+//     line is non-empty. This includes named separators such as ---section2.
+//   - Scan until a closing line whose trimEnd() is exactly ---; blank lines
+//     inside the body are fine.
 
 export default function (_context: unknown) {
 	return {
@@ -24,21 +21,22 @@ export default function (_context: unknown) {
 					endLine: number,
 					silent: boolean,
 				) {
-					// Opening line must be exactly ---.
-					const openPos = state.bMarks[startLine] + state.tShift[startLine];
+					// Keep this in sync with Slidev's packages/parser/src/core.ts.
+					const openPos = state.bMarks[startLine];
 					const openEnd = state.eMarks[startLine];
-					if (state.src.slice(openPos, openEnd).trim() !== '---') return false;
+					const openLine = state.src.slice(openPos, openEnd).trimEnd();
+					if (!openLine.startsWith('---') || openLine[3] === '-') return false;
 
 					const bodyStart = startLine + 1;
 					if (bodyStart >= endLine) return false;
 
-					// The line immediately after --- must be non-empty.
+					// The line immediately after the separator must be non-empty.
 					if (state.src.slice(state.bMarks[bodyStart], state.eMarks[bodyStart]).trim() === '') return false;
 
 					// Scan for the closing ---; blank lines within are fine.
 					let closingLine = -1;
 					for (let i = bodyStart; i < endLine; i++) {
-						if (state.src.slice(state.bMarks[i], state.eMarks[i]).trim() === '---') {
+						if (state.src.slice(state.bMarks[i], state.eMarks[i]).trimEnd() === '---') {
 							closingLine = i;
 							break;
 						}

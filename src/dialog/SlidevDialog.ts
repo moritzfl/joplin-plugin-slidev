@@ -163,7 +163,7 @@ export const showSlidevPresentation = async (
 	const extraFiles = buildSlidevExtraFiles(settings);
 
 	// Slidev prints "localhost:<port>" in its startup table when the server is ready.
-	// We detect that here instead of TCP-polling, which is unreliable in the plugin sandbox.
+	// Treat that as the fastest signal; waitForServerReady below is a fallback.
 	const handleServerReady = async () => {
 		if (cancelled || serverReady) return;
 		serverReady = true;
@@ -201,7 +201,7 @@ export const showSlidevPresentation = async (
 						tunnelEntryUrl = tunnelMatch[1];
 					}
 					scheduleHtmlUpdate();
-					// Slidev prints the localhost URL in its startup table when ready.
+					// Prefer Slidev's own ready log over waiting for the TCP fallback.
 					if (!serverReady && line.includes(`localhost:${port}`)) {
 						handleServerReady().catch(() => {});
 					}
