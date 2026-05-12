@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-05-12
+- Fixed local resources failing to resolve from Slidev virtual slide modules
+
 ## [0.2.2] - 2026-05-12
 - Fixed attachment resources failing to load with current Slidev/Vite versions on Windows
 
