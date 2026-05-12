@@ -3,6 +3,7 @@ import stylesIndex from './slidevExtraFiles/styles-index.css';
 import stylesPresenter from './slidevExtraFiles/styles-presenter.css';
 import globalTopVue from './slidevExtraFiles/global-top.vue';
 import globalBottomVue from './slidevExtraFiles/global-bottom.vue';
+import { buildViteConfigContent } from './slidevExtraFiles/vite-config';
 
 export const EXTRA_FILE_PATHS = [
 	'styles/index.css',
@@ -15,18 +16,8 @@ export const buildSlidevExtraFiles = (settings: Pick<PluginSettings, 'remoteTunn
 	const extraFiles: Record<string, string> = {
 		'styles/index.css': stylesIndex,
 		'global-bottom.vue': globalBottomVue,
+		'vite.config.ts': buildViteConfigContent(settings.remoteTunnel),
 	};
-
-	if (settings.remoteTunnel) {
-		extraFiles['vite.config.ts'] = `import { defineConfig } from 'vite';
-
-export default defineConfig({
-  server: {
-    allowedHosts: ['trycloudflare.com', '.trycloudflare.com'],
-  },
-});
-`;
-	}
 
 	if (settings.presenterControlledNavigation) {
 		extraFiles['styles/index.css'] += '\n' + stylesPresenter;
