@@ -25,8 +25,8 @@ interface MarkdownPreprocessorOptions {
 	embedPdfResources: boolean;
 	slideNumber: string;
 	slideProgressBar: string;
-	// When set, resources are written here with relative ./resources/ URLs instead of
-	// the Vite-served /resources/ paths used by the dev/export server.
+	// When set, resources are written into that bundle directory. Otherwise they
+	// are written into the managed Slidev workspace next to slides.md.
 	bundleOutputDir?: string;
 }
 
@@ -157,10 +157,8 @@ const exportResources = async (
 	const ids = collectResourceIds(markdown);
 	if (ids.size === 0) return markdown;
 
-	const resourceDir = options.bundleOutputDir
-		? join(options.bundleOutputDir, 'resources')
-		: join(workDir, 'public', 'resources');
-	const urlPrefix = options.bundleOutputDir ? './resources/' : '/resources/';
+	const resourceDir = join(options.bundleOutputDir ?? workDir, 'resources');
+	const urlPrefix = './resources/';
 
 	await mkdir(resourceDir, { recursive: true });
 
