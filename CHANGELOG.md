@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-12
+- Fixed attachment resources failing to load with current Slidev/Vite versions on Windows
+
 ## [0.2.1] - 2026-05-06
 - Fixed layout issues caused by empty fenced code blocks and resource references inside code blocks
 - Fixed the package search field not being clearable
