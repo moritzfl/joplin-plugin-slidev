@@ -247,6 +247,9 @@ const quoteForWindowsShell = (arg: string): string =>
 		? `"${arg.replace(/"/g, '\\"')}"`
 		: arg;
 
+const redactSensitiveLogLine = (line: string): string =>
+	line.replace(/([?&]password=)[^&\s/]+/g, '$1*****');
+
 // ---------- child-process environment ----------
 
 export const buildChildEnv = (): NodeJS.ProcessEnv => {
@@ -542,8 +545,9 @@ export const startSlidevServer = async (
 	const env = buildChildEnv();
 
 	const emit = (line: string) => {
-		console.log('[Slidev]', line);
-		onLog?.(line);
+		const redacted = redactSensitiveLogLine(line);
+		console.log('[Slidev]', redacted);
+		onLog?.(redacted);
 	};
 
 	const { workDir, slidevBin } = await prepareSlideshowDir(markdown, dataDir, emit, preprocessMarkdown, extraFiles);
@@ -557,7 +561,7 @@ export const startSlidevServer = async (
 	else if (remoteEnabled) args.push('--remote');
 	if (remoteEnabled && remoteBind) args.push('--bind', remoteBind);
 	if (remoteOptions?.remoteTunnel) args.push('--tunnel');
-	const displayArgs = args.map(arg => arg.startsWith('--remote=') ? '--remote=********' : quoteForLog(arg));
+	const displayArgs = args.map(arg => arg.startsWith('--remote=') ? '--remote=*****' : quoteForLog(arg));
 
 	emit(`Starting: ${quoteForLog(cmd)} ${displayArgs.join(' ')}`);
 
@@ -625,8 +629,9 @@ export const exportSlidevDeck = async (
 ): Promise<string> => {
 	const env = buildChildEnv();
 	const emit = (line: string) => {
-		console.log('[Slidev]', line);
-		onLog?.(line);
+		const redacted = redactSensitiveLogLine(line);
+		console.log('[Slidev]', redacted);
+		onLog?.(redacted);
 	};
 	const { workDir, slidevBin } = await prepareSlideshowDir(markdown, dataDir, emit, preprocessMarkdown, extraFiles);
 	await ensurePlaywrightChromium(workDir, emit);
@@ -645,7 +650,7 @@ export const exportSlidevDeck = async (
 		const handleData = (d: Buffer) => {
 			for (const line of d.toString().split('\n')) {
 				const trimmed = line.trimEnd();
-				if (trimmed) onLog?.(trimmed);
+				if (trimmed) onLog?.(redactSensitiveLogLine(trimmed));
 			}
 		};
 		proc.stdout?.on('data', handleData);
