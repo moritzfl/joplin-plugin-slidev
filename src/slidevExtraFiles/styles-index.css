@@ -3,3 +3,9 @@
    title attribute, which is an implementation detail of Slidev's UI.
    Verified against @slidev/cli 0.50.x — recheck after Slidev upgrades. */
 button[title="Edit Notes"] { display: none !important; }
+
+/* Clip overflowing content inside the slide instead of letting the PDF exporter
+   decide how to handle it. */
+.slidev-layout {
+	overflow: hidden;
+}
