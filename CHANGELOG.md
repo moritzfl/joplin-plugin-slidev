@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-05-13
+- Fixed PDF export filenames with spaces or shell metacharacters on Windows
+- Redacted remote presentation passwords from Slidev logs
+- Fixed overflowing slide content disappearing from exported PDFs
+
 ## [0.2.3] - 2026-05-12
 - Fixed local resources failing to resolve from Slidev virtual slide modules
 
