@@ -239,6 +239,14 @@ const resolveNpmCmd = (): string => {
 	return process.platform === 'win32' ? 'npm.cmd' : 'npm';
 };
 
+const quoteForLog = (arg: string): string =>
+	/[\s&,]/.test(arg) ? JSON.stringify(arg) : arg;
+
+const quoteForWindowsShell = (arg: string): string =>
+	process.platform === 'win32' && /[\s&|<>^()]/.test(arg)
+		? `"${arg.replace(/"/g, '\\"')}"`
+		: arg;
+
 // ---------- child-process environment ----------
 
 export const buildChildEnv = (): NodeJS.ProcessEnv => {
@@ -549,11 +557,11 @@ export const startSlidevServer = async (
 	else if (remoteEnabled) args.push('--remote');
 	if (remoteEnabled && remoteBind) args.push('--bind', remoteBind);
 	if (remoteOptions?.remoteTunnel) args.push('--tunnel');
-	const displayArgs = args.map(arg => arg.startsWith('--remote=') ? '--remote=********' : arg);
+	const displayArgs = args.map(arg => arg.startsWith('--remote=') ? '--remote=********' : quoteForLog(arg));
 
-	emit(`Starting: ${cmd} ${displayArgs.join(' ')}`);
+	emit(`Starting: ${quoteForLog(cmd)} ${displayArgs.join(' ')}`);
 
-	const proc = spawn(cmd, args, {
+	const proc = spawn(cmd, args.map(quoteForWindowsShell), {
 		cwd: workDir,
 		shell: process.platform === 'win32',
 		env,
@@ -624,10 +632,10 @@ export const exportSlidevDeck = async (
 	await ensurePlaywrightChromium(workDir, emit);
 
 	const args = ['export', 'slides.md', '--format', format, '--output', outputPath];
-	emit(`Exporting: ${slidevBin} ${args.join(' ')}`);
+	emit(`Exporting: ${quoteForLog(slidevBin)} ${args.map(quoteForLog).join(' ')}`);
 
 	await new Promise<void>((resolve, reject) => {
-		const proc = spawn(slidevBin, args, {
+		const proc = spawn(slidevBin, args.map(quoteForWindowsShell), {
 			cwd: workDir,
 			shell: process.platform === 'win32',
 			env,
