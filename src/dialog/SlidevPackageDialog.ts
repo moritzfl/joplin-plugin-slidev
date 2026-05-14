@@ -15,6 +15,7 @@ const dialogs = joplin.views.dialogs;
 const dialogId = `${pluginPrefix}slidevPackageDialog`;
 
 type PackageKind = 'theme' | 'addon';
+type PackageView = PackageKind | 'installed';
 
 interface NpmSearchObject {
 	package: {
@@ -257,8 +258,14 @@ const searchPackages = async (kind: PackageKind, query: string): Promise<NpmSear
 	return data.objects ?? [];
 };
 
+const installedPackageKindLabel = (packageName: string): string => {
+	if (packageName.includes('theme-')) return 'Theme';
+	if (packageName.includes('addon-')) return 'Addon';
+	return 'Package';
+};
+
 const searchHtml = (
-	kind: PackageKind,
+	view: PackageView,
 	query: string,
 	packages: NpmSearchObject[],
 	installedPackages: Map<string, InstalledSlidevPackage>,
@@ -270,12 +277,44 @@ const searchHtml = (
 	message = '',
 	isLoading = false,
 ) => {
+	const displayedInstalledPackages = [...installedPackages.values()]
+		.filter(pkg => !query.trim() || pkg.packageName.toLowerCase().includes(query.trim().toLowerCase()));
+	const resultCount = view === 'installed' ? displayedInstalledPackages.length : packages.length;
 	const cards = isLoading
 		? `<div class="empty">
 			<div class="loader" aria-hidden="true"></div>
 			<h2>Loading packages</h2>
 			<p>Fetching npm results and package metadata. This can take a few seconds on slow networks.</p>
 		</div>`
+		: view === 'installed' && displayedInstalledPackages.length === 0
+		? `<div class="empty">
+			<div class="empty-icon">⌕</div>
+			<h2>No installed packages found</h2>
+			<p>Install a theme or addon first, or clear the search filter.</p>
+		</div>`
+		: view === 'installed'
+		? displayedInstalledPackages.map((pkg, index) => {
+			const npmUrl = `https://www.npmjs.com/package/${encodeURIComponent(pkg.packageName)}`;
+			const label = installedPackageKindLabel(pkg.packageName);
+			const icon = label === 'Theme' ? '🎨' : label === 'Addon' ? '🧩' : '📦';
+			return `<label class="card" title="Select ${esc(pkg.packageName)}">
+				<input type="radio" name="packageName" value="${esc(pkg.packageName)}"${index === 0 ? ' checked' : ''} />
+				<div class="card-inner">
+					<div class="icon">${icon}</div>
+					<div class="content">
+						<div class="title-row">
+							<strong>${esc(pkg.packageName)}</strong>
+							<div class="versions">
+								<span class="version">${label}</span>
+								<span class="installed-version">Installed${pkg.version ? ` v${esc(pkg.version)}` : ''}</span>
+							</div>
+						</div>
+						<p>This package is installed in the managed Slidev workspace.</p>
+						<div class="links"><span title="${esc(npmUrl)}">View on npm: ${esc(npmUrl)}</span></div>
+					</div>
+				</div>
+			</label>`;
+		}).join('')
 		: packages.length === 0
 		? `<div class="empty">
 			<div class="empty-icon">⌕</div>
@@ -295,7 +334,7 @@ const searchHtml = (
 		const downloadLabel = weeklyDownloads >= 1000
 			? `${Math.round(weeklyDownloads / 100) / 10}k/week`
 			: `${weeklyDownloads}/week`;
-		const icon = kind === 'theme' ? '🎨' : '🧩';
+		const icon = view === 'theme' ? '🎨' : '🧩';
 		return `<label class="card" title="Select ${esc(pkg.name)}">
 			<input type="radio" name="packageName" value="${esc(pkg.name)}"${index === 0 ? ' checked' : ''} />
 			<div class="card-inner">
@@ -321,7 +360,9 @@ const searchHtml = (
 		</label>`;
 	}).join('');
 
-	const subtitle = kind === 'theme'
+	const subtitle = view === 'installed'
+		? 'Review packages already installed in the managed Slidev workspace.'
+		: view === 'theme'
 		? 'Browse visual styles from npm packages tagged slidev-theme.'
 		: 'Browse extensions from npm packages tagged slidev-addon.';
 	return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
@@ -466,15 +507,15 @@ p {
 		: '<span class="version-none">not installed yet</span>'}
       </div>
     </div>
-    <div class="count"><strong>${packages.length}</strong><span>results</span></div>
+    <div class="count"><strong>${resultCount}</strong><span>${view === 'installed' ? 'installed' : 'results'}</span></div>
   </section>
-  <input type="hidden" name="kind" value="${kind}" />
+  <input type="hidden" name="view" value="${view}" />
   <section class="controls">
-    <div class="search"><input name="query" value="${esc(query)}" placeholder="Search package names, styles, features..." /></div>
+    <div class="search"><input name="query" value="${esc(query)}" placeholder="${view === 'installed' ? 'Filter installed packages...' : 'Search package names, styles, features...'}" /></div>
   </section>
   ${message ? `<div class="message">${esc(message)}</div>` : ''}
   <section class="steps" aria-label="Install workflow">
-	    <div class="step"><span class="step-num">1</span><span>Choose <strong>Themes/Addons</strong> from the bottom bar</span></div>
+	    <div class="step"><span class="step-num">1</span><span>Choose <strong>Themes/Addons/Installed</strong> from the bottom bar</span></div>
     <div class="step"><span class="step-num">2</span><span>Search and select a package card</span></div>
     <div class="step"><span class="step-num">3</span><span>Click <strong>Install / Update Selected</strong></span></div>
   </section>
@@ -524,9 +565,30 @@ const trySearchPackages = async (kind: PackageKind, query: string): Promise<{ pa
 const installedPackageMap = async (dataDir: string, kind: PackageKind) =>
 	new Map((await listInstalledSlidevPackages(dataDir, kind)).map(pkg => [pkg.packageName, pkg]));
 
-const updateSearchState = async (dataDir: string, kind: PackageKind, query: string): Promise<SearchState> => {
-	const searchResult = await trySearchPackages(kind, query);
-	const installedPackages = await installedPackageMap(dataDir, kind);
+
+const allInstalledPackageMap = async (dataDir: string) => {
+	const [themes, addons] = await Promise.all([
+		listInstalledSlidevPackages(dataDir, 'theme'),
+		listInstalledSlidevPackages(dataDir, 'addon'),
+	]);
+	return new Map([...themes, ...addons].map(pkg => [pkg.packageName, pkg]));
+};
+
+const updateSearchState = async (dataDir: string, view: PackageView, query: string): Promise<SearchState> => {
+	if (view === 'installed') {
+		const installedPackages = await allInstalledPackageMap(dataDir);
+		return {
+			packages: [],
+			installedPackages,
+			githubStars: new Map(),
+			packageMetadata: new Map(),
+			message: `Found ${installedPackages.size} installed package(s).`,
+			isLoading: false,
+		};
+	}
+
+	const searchResult = await trySearchPackages(view, query);
+	const installedPackages = await installedPackageMap(dataDir, view);
 	const packageMetadata = await loadPackageMetadata(searchResult.packages);
 	const githubStars = await loadGithubStars(searchResult.packages, packageMetadata);
 	return {
@@ -539,14 +601,16 @@ const updateSearchState = async (dataDir: string, kind: PackageKind, query: stri
 	};
 };
 
-const loadingSearchState = (kind: PackageKind, query: string): SearchState => ({
+const loadingSearchState = (view: PackageView, query: string): SearchState => ({
 	packages: [],
 	installedPackages: new Map(),
 	githubStars: new Map(),
 	packageMetadata: new Map(),
-	message: query.trim()
-		? `Searching ${kind === 'theme' ? 'themes' : 'addons'} for "${query.trim()}"...`
-		: `Loading ${kind === 'theme' ? 'themes' : 'addons'} from npm...`,
+	message: view === 'installed'
+		? 'Loading installed packages...'
+		: query.trim()
+			? `Searching ${view === 'theme' ? 'themes' : 'addons'} for "${query.trim()}"...`
+			: `Loading ${view === 'theme' ? 'themes' : 'addons'} from npm...`,
 	isLoading: true,
 });
 
@@ -554,9 +618,9 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 	const dlg = await getHandle();
 	await dialogs.setFitToContent(dlg, false);
 
-	let kind: PackageKind = 'theme';
+	let view: PackageView = 'theme';
 	let query = '';
-	let state = loadingSearchState(kind, query);
+	let state = loadingSearchState(view, query);
 	let packages = state.packages;
 	let installedPackages = state.installedPackages;
 	let githubStars = state.githubStars;
@@ -570,7 +634,7 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 
 	const renderCurrent = () => dialogs.setHtml(
 		dlg,
-		searchHtml(kind, query, packages, installedPackages, githubStars, packageMetadata, installedSlidevVersion, installedPlaywrightVersion, latestSlidevVersion, message, isLoading),
+		searchHtml(view, query, packages, installedPackages, githubStars, packageMetadata, installedSlidevVersion, installedPlaywrightVersion, latestSlidevVersion, message, isLoading),
 	);
 
 	const applyState = (nextState: SearchState) => {
@@ -582,24 +646,24 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 		isLoading = nextState.isLoading;
 	};
 
-	const startLoadingSearchState = (nextKind: PackageKind, nextQuery: string, messagePrefix = '') => {
+	const startLoadingSearchState = (nextView: PackageView, nextQuery: string, messagePrefix = '') => {
 		const token = ++loadToken;
-		state = loadingSearchState(nextKind, nextQuery);
+		state = loadingSearchState(nextView, nextQuery);
 		if (messagePrefix) state.message = `${messagePrefix} ${state.message}`;
 		applyState(state);
-		updateSearchState(dataDir, nextKind, nextQuery).then((nextState) => {
-			if (token !== loadToken || kind !== nextKind || query !== nextQuery) return;
+		updateSearchState(dataDir, nextView, nextQuery).then((nextState) => {
+			if (token !== loadToken || view !== nextView || query !== nextQuery) return;
 			applyState(messagePrefix ? { ...nextState, message: nextState.message.replace('Found', messagePrefix.trim() + ' Found') } : nextState);
 			renderCurrent().catch(() => {});
 		}).catch((e) => {
-			if (token !== loadToken || kind !== nextKind || query !== nextQuery) return;
+			if (token !== loadToken || view !== nextView || query !== nextQuery) return;
 			message = `Could not load packages: ${e instanceof Error ? e.message : String(e)}`;
 			isLoading = false;
 			renderCurrent().catch(() => {});
 		});
 	};
 
-	startLoadingSearchState(kind, query);
+	startLoadingSearchState(view, query);
 	fetchLatestSlidevVersion().then((version) => {
 		latestSlidevVersion = version;
 		renderCurrent().catch(() => {});
@@ -608,8 +672,9 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 	while (true) {
 		await renderCurrent();
 		await dialogs.setButtons(dlg, [
-			{ id: 'theme', title: kind === 'theme' ? 'Themes ✓' : 'Themes' },
-			{ id: 'addon', title: kind === 'addon' ? 'Addons ✓' : 'Addons' },
+			{ id: 'theme', title: view === 'theme' ? 'Themes ✓' : 'Themes' },
+			{ id: 'addon', title: view === 'addon' ? 'Addons ✓' : 'Addons' },
+			{ id: 'installed', title: view === 'installed' ? 'Installed ✓' : 'Installed' },
 			{ id: 'submit', title: 'Search' },
 			{ id: 'open-website', title: 'Visit on npm' },
 			{ id: 'confirm', title: 'Install / Update Selected' },
@@ -622,23 +687,26 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 		const result = await dialogs.open(dlg);
 		if (!result || result.id === 'cancel') return;
 
-		const nextKind = result.id === 'addon'
+		const formView = formValue(result.formData, 'view');
+		const nextView = result.id === 'installed'
+			? 'installed'
+			: result.id === 'addon'
 			? 'addon'
 			: result.id === 'theme'
 				? 'theme'
-				: formValue(result.formData, 'kind') === 'addon' ? 'addon' : 'theme';
-		kind = nextKind;
+				: formView === 'installed' || formView === 'addon' || formView === 'theme' ? formView : 'theme';
+		view = nextView;
 		query = formValue(result.formData, 'query') ?? query;
 		const packageName = formValue(result.formData, 'packageName');
 
-		if (result.id === 'theme' || result.id === 'addon') {
+		if (result.id === 'theme' || result.id === 'addon' || result.id === 'installed') {
 			query = '';
-			startLoadingSearchState(kind, query, `Browsing ${kind === 'theme' ? 'themes' : 'addons'}.`);
+			startLoadingSearchState(view, query, view === 'installed' ? 'Browsing installed packages.' : `Browsing ${view === 'theme' ? 'themes' : 'addons'}.`);
 			continue;
 		}
 
 		if (result.id === 'submit') {
-			startLoadingSearchState(kind, query);
+			startLoadingSearchState(view, query);
 			continue;
 		}
 
@@ -648,12 +716,15 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 				continue;
 			}
 			const selectedPackage = packages.find(item => item.package.name === packageName)?.package;
-			if (!selectedPackage) {
+			const npmUrl = selectedPackage
+				? packageNpmUrl(selectedPackage)
+				: installedPackages.has(packageName) ? `https://www.npmjs.com/package/${encodeURIComponent(packageName)}` : '';
+			if (!npmUrl) {
 				message = `Could not find selected package: ${packageName}`;
 				continue;
 			}
 			try {
-				await shell.openExternal(packageNpmUrl(selectedPackage));
+				await shell.openExternal(npmUrl);
 				message = `Opened npm page for ${packageName}.`;
 			} catch (e) {
 				message = `Could not open npm page for ${packageName}: ${e instanceof Error ? e.message : String(e)}`;
@@ -684,7 +755,7 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 			}
 			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
 			await openPromise;
-			startLoadingSearchState(kind, query);
+			startLoadingSearchState(view, query);
 		}
 
 		if (result.id === 'uninstall') {
@@ -715,7 +786,7 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 			}
 			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
 			await openPromise;
-			startLoadingSearchState(kind, query);
+			startLoadingSearchState(view, query);
 		}
 
 		if (result.id === 'update-slidev') {
