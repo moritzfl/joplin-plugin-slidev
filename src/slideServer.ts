@@ -105,11 +105,20 @@ const pidBelongsToPlugin = (pid: number, expectedWorkDir: string, expectedCmd: s
 			const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf-8').split('\0')[0];
 			return cmdline.includes(expectedCmd);
 		} else if (process.platform === 'darwin') {
-			// ps -p <pid> -o comm= prints just the command name/path.
-			const result = spawnSync('ps', ['-p', String(pid), '-o', 'comm='], { encoding: 'utf-8' });
-			if (result.status !== 0) return false;
-			const comm = result.stdout.trim();
-			return comm.includes(expectedCmd);
+			// Detached children should be process-group leaders, which lets us
+			// safely kill the whole group with -pid after verifying the cwd.
+			const pgidResult = spawnSync('ps', ['-p', String(pid), '-o', 'pgid='], { encoding: 'utf-8' });
+			if (pgidResult.status !== 0) return false;
+			const pgid = Number(pgidResult.stdout.trim());
+			if (pgid !== pid) return false;
+
+			const cwdResult = spawnSync('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { encoding: 'utf-8' });
+			if (cwdResult.status !== 0) return false;
+			const cwd = cwdResult.stdout.split('\n').find(line => line.startsWith('n'))?.slice(1);
+			if (!cwd) return false;
+
+			const { realpathSync } = require('fs') as typeof import('fs');
+			return realpathSync(cwd) === realpathSync(expectedWorkDir);
 		} else {
 			// Windows: use wmic to query the executable path.
 			const result = spawnSync(
