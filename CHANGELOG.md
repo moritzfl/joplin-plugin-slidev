@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-14
+- Added retry options for package installs with dependency conflicts
+- Improved package uninstall messages
+
 ## [0.3.0] - 2026-05-14
 - Added management for installed Slidev themes, addons, and export dependencies
 - Improved the Slidev package marketplace
