@@ -29,6 +29,8 @@ export interface InstalledSlidevPackage {
 	version: string;
 }
 
+export type NpmInstallConflictMode = 'default' | 'legacy-peer-deps' | 'force';
+
 // ---------- port helpers ----------
 
 const isPortAvailable = (port: number): Promise<boolean> =>
@@ -462,10 +464,14 @@ const runNpmInstallPackage = (
 	workDir: string,
 	packages: string | string[],
 	emit: (line: string) => void,
+	conflictMode: NpmInstallConflictMode = 'default',
 ): Promise<void> => {
 	const pkgs = Array.isArray(packages) ? packages : [packages];
+	const conflictArgs = conflictMode === 'legacy-peer-deps'
+		? ['--legacy-peer-deps']
+		: conflictMode === 'force' ? ['--force'] : [];
 	return new Promise((resolve, reject) => {
-		const proc = spawn(resolveNpmCmd(), ['install', ...pkgs, '--no-audit', '--no-fund'], {
+		const proc = spawn(resolveNpmCmd(), ['install', ...pkgs, '--no-audit', '--no-fund', ...conflictArgs], {
 			cwd: workDir,
 			env: buildChildEnv(),
 			shell: process.platform === 'win32',
@@ -519,8 +525,9 @@ export const installSlidevPackage = (
 	dataDir: string,
 	packageName: string,
 	emit: (line: string) => void,
+	conflictMode?: NpmInstallConflictMode,
 ): Promise<void> => {
-	return runNpmInstallPackage(slidevWorkspaceDir(dataDir), `${packageName}@latest`, emit);
+	return runNpmInstallPackage(slidevWorkspaceDir(dataDir), `${packageName}@latest`, emit, conflictMode);
 };
 
 export const uninstallSlidevPackage = (

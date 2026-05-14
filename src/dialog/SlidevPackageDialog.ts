@@ -7,7 +7,7 @@ import marketplaceTemplate from './marketplaceDialog.html';
 import installingTemplate from './installingDialog.html';
 import installCompleteTemplate from './installCompleteDialog.html';
 import installFailedTemplate from './installFailedDialog.html';
-import { ensureSlidevWorkspace, installSlidevPackage, updateSlidevCore, readInstalledSlidevVersion, listInstalledSlidevPackages, InstalledSlidevPackage, uninstallSlidevPackage, updatePlaywrightChromium, readInstalledPlaywrightVersion } from '../slideServer';
+import { ensureSlidevWorkspace, installSlidevPackage, updateSlidevCore, readInstalledSlidevVersion, listInstalledSlidevPackages, InstalledSlidevPackage, uninstallSlidevPackage, updatePlaywrightChromium, readInstalledPlaywrightVersion, NpmInstallConflictMode } from '../slideServer';
 
 // electron is available at runtime inside Joplin (Electron app) but has no bundled types.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -485,6 +485,60 @@ const installFailedHtml = (packageName: string, logs: string[], error: unknown) 
 		LOG: escHtml(logs.join('\n')),
 	});
 
+const isPeerDependencyConflict = (logs: string[], error: unknown): boolean => {
+	const text = `${logs.join('\n')}\n${error instanceof Error ? error.message : String(error)}`;
+	return text.includes('ERESOLVE') || text.includes('--legacy-peer-deps') || text.includes('Conflicting peer dependency');
+};
+
+const retryLabel = (mode: NpmInstallConflictMode): string => {
+	if (mode === 'legacy-peer-deps') return '--legacy-peer-deps';
+	if (mode === 'force') return '--force';
+	return '';
+};
+
+const installPackageWithConflictDialog = async (dlg: string, dataDir: string, packageName: string): Promise<boolean> => {
+	let conflictMode: NpmInstallConflictMode = 'default';
+
+	while (true) {
+		const label = retryLabel(conflictMode);
+		const displayName = label ? `${packageName} (${label})` : packageName;
+		const logs: string[] = [];
+		await dialogs.setHtml(dlg, installingHtml(displayName, logs));
+		await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
+		const openPromise = dialogs.open(dlg).catch(() => null);
+
+		try {
+			if (label) logs.push(`Retrying npm install with ${label}...`);
+			await installSlidevPackage(dataDir, packageName, (line) => {
+				logs.push(line);
+				dialogs.setHtml(dlg, installingHtml(displayName, logs.slice(-40))).catch(() => {});
+			}, conflictMode);
+			await dialogs.setHtml(dlg, installCompleteHtml(displayName, logs.slice(-80)));
+			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
+			await openPromise;
+			return true;
+		} catch (e) {
+			const canRetry = conflictMode === 'default' && isPeerDependencyConflict(logs, e);
+			await dialogs.setHtml(dlg, installFailedHtml(displayName, logs.slice(-80), e));
+			await dialogs.setButtons(dlg, canRetry ? [
+				{ id: 'retry-legacy-peer-deps', title: 'Retry with legacy peer deps' },
+				{ id: 'retry-force', title: 'Retry with force' },
+				{ id: 'cancel', title: 'Close' },
+			] : [{ id: 'cancel', title: 'Close' }]);
+			const result = await openPromise;
+			if (canRetry && result?.id === 'retry-legacy-peer-deps') {
+				conflictMode = 'legacy-peer-deps';
+				continue;
+			}
+			if (canRetry && result?.id === 'retry-force') {
+				conflictMode = 'force';
+				continue;
+			}
+			return false;
+		}
+	}
+};
+
 const formValue = (formData: any, key: string): string => {
 	const value = formData?.packagePicker?.[key] ?? formData?.[key];
 	return typeof value === 'string' ? value : '';
@@ -743,23 +797,12 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 				continue;
 			}
 
-			const logs: string[] = [];
-			await dialogs.setHtml(dlg, installingHtml(packageName, logs));
-			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
-			const openPromise = dialogs.open(dlg).catch(() => null);
-			try {
-				await installSlidevPackage(dataDir, packageName, (line) => {
-					logs.push(line);
-					dialogs.setHtml(dlg, installingHtml(packageName, logs.slice(-40))).catch(() => {});
-				});
-				await dialogs.setHtml(dlg, installCompleteHtml(packageName, logs.slice(-80)));
+			const installed = await installPackageWithConflictDialog(dlg, dataDir, packageName);
+			if (installed) {
 				state = { ...state, message: `${packageName} installed. You can use it immediately in note frontmatter; restart Joplin only to refresh the settings dropdown.` };
-			} catch (e) {
-				await dialogs.setHtml(dlg, installFailedHtml(packageName, logs.slice(-80), e));
+			} else {
 				state = { ...state, message: `Install failed for ${packageName}.` };
 			}
-			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
-			await openPromise;
 			state = { ...state, installedPackages: await allInstalledPackageMap(dataDir) };
 		}
 
