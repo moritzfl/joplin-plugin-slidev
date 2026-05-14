@@ -463,27 +463,59 @@ const marketplaceHtml = (
 	});
 };
 
-const installingHtml = (packageName: string, logs: string[]) =>
-	render(installingTemplate, {
-		STYLE: pkgLogStyle,
-		PACKAGE: escHtml(packageName),
-		LOG: escHtml(logs.length ? logs.join('\n') : 'Starting npm install...'),
-	});
+type PackageOperation = 'install' | 'uninstall';
 
-const installCompleteHtml = (packageName: string, logs: string[]) =>
-	render(installCompleteTemplate, {
+const packageOperationText = (operation: PackageOperation, packageName: string) => {
+	if (operation === 'uninstall') {
+		return {
+			action: 'Uninstalling',
+			failureAction: 'uninstall',
+			doneVerb: 'uninstalled',
+			startingLog: 'Starting npm uninstall...',
+			note: `${packageName} has been removed from the Slidev workspace.`,
+		};
+	}
+
+	return {
+		action: 'Installing',
+		failureAction: 'install',
+		doneVerb: 'installed',
+		startingLog: 'Starting npm install...',
+		note: `${packageName} is installed in the Slidev workspace. You can use it immediately in note frontmatter; restart Joplin only if you need the settings dropdown to refresh.`,
+	};
+};
+
+const installingHtml = (packageName: string, logs: string[], operation: PackageOperation = 'install') => {
+	const text = packageOperationText(operation, packageName);
+	return render(installingTemplate, {
+		STYLE: pkgLogStyle,
+		ACTION: escHtml(text.action),
+		PACKAGE: escHtml(packageName),
+		LOG: escHtml(logs.length ? logs.join('\n') : text.startingLog),
+	});
+};
+
+const installCompleteHtml = (packageName: string, logs: string[], operation: PackageOperation = 'install') => {
+	const text = packageOperationText(operation, packageName);
+	return render(installCompleteTemplate, {
 		STYLE: pkgLogStyle,
 		PACKAGE: escHtml(packageName),
+		DONE_VERB: escHtml(text.doneVerb),
+		NOTE: escHtml(text.note),
 		LOG: escHtml(logs.join('\n')),
 	});
+};
 
-const installFailedHtml = (packageName: string, logs: string[], error: unknown) =>
-	render(installFailedTemplate, {
+const installFailedHtml = (packageName: string, logs: string[], error: unknown, operation: PackageOperation = 'install') => {
+	const text = packageOperationText(operation, packageName);
+	return render(installFailedTemplate, {
 		STYLE: pkgLogStyle,
+		ACTION: escHtml(text.failureAction),
 		PACKAGE: escHtml(packageName),
 		ERROR: escHtml(error instanceof Error ? error.message : String(error)),
 		LOG: escHtml(logs.join('\n')),
 	});
+};
 
 const isPeerDependencyConflict = (logs: string[], error: unknown): boolean => {
 	const text = `${logs.join('\n')}\n${error instanceof Error ? error.message : String(error)}`;
@@ -864,20 +896,19 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 				continue;
 			}
 
-			const displayName = `${packageName} uninstall`;
 			const logs: string[] = [];
-			await dialogs.setHtml(dlg, installingHtml(displayName, logs));
+			await dialogs.setHtml(dlg, installingHtml(packageName, logs, 'uninstall'));
 			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
 			const openPromise = dialogs.open(dlg).catch(() => null);
 			try {
 				await uninstallSlidevPackage(dataDir, packageName, (line) => {
 					logs.push(line);
-					dialogs.setHtml(dlg, installingHtml(displayName, logs.slice(-40))).catch(() => {});
+					dialogs.setHtml(dlg, installingHtml(packageName, logs.slice(-40), 'uninstall')).catch(() => {});
 				});
-				await dialogs.setHtml(dlg, installCompleteHtml(displayName, logs.slice(-80)));
+				await dialogs.setHtml(dlg, installCompleteHtml(packageName, logs.slice(-80), 'uninstall'));
 				state = { ...state, message: `${packageName} uninstalled.` };
 			} catch (e) {
-				await dialogs.setHtml(dlg, installFailedHtml(displayName, logs.slice(-80), e));
+				await dialogs.setHtml(dlg, installFailedHtml(packageName, logs.slice(-80), e, 'uninstall'));
 				state = { ...state, message: `Uninstall failed for ${packageName}.` };
 			}
 			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
