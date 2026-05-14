@@ -317,7 +317,6 @@ const runtimeCardsHtml = (
 					</div>
 				</div>
 				<p>Updates the browser package used by Slidev export workflows.</p>
-				<div class="card-actions"><span>Select, then use Install / Update Selected</span></div>
 			</div>
 		</div>
 	</label>`;
@@ -334,7 +333,6 @@ const installedCardsHtml = (installedPackages: Map<string, InstalledSlidevPackag
 	}
 
 	return packages.map((pkg, index) => {
-		const npmUrl = `https://www.npmjs.com/package/${encodeURIComponent(pkg.packageName)}`;
 		const label = installedPackageKindLabel(pkg.packageName);
 		const icon = label === 'Theme' ? '🎨' : label === 'Addon' ? '🧩' : '📦';
 		return `<label class="card" data-view="installed" data-search="${packageSearchText(pkg.packageName, label)}" title="Select ${esc(pkg.packageName)}">
@@ -350,8 +348,6 @@ const installedCardsHtml = (installedPackages: Map<string, InstalledSlidevPackag
 						</div>
 					</div>
 					<p>This package is installed in the managed Slidev workspace.</p>
-					<div class="links"><span title="${esc(npmUrl)}">npm: ${esc(npmUrl)}</span></div>
-					<div class="card-actions"><span>Select to update, open on npm, or uninstall</span></div>
 				</div>
 			</div>
 		</label>`;
@@ -377,7 +373,6 @@ const packageCardsHtml = (
 		const pkg = item.package;
 		const description = cleanDescription(pkg.description);
 		const installed = installedPackages.get(pkg.name);
-		const npmUrl = packageNpmUrl(pkg);
 		const stars = githubStars.get(pkg.name);
 		const metadata = packageMetadata.get(pkg.name);
 		const published = formatPackageDate(metadata?.created);
@@ -406,8 +401,6 @@ const packageCardsHtml = (
 						${published ? `<span>Published ${esc(published)}</span>` : ''}
 						${updated ? `<span>Updated ${esc(updated)}</span>` : ''}
 					</div>
-					<div class="links"><span title="${esc(npmUrl)}">npm: ${esc(npmUrl)}</span></div>
-					<div class="card-actions"><span>${installed ? 'Select, then update from the footer' : 'Select, then install from the footer'}</span></div>
 				</div>
 			</div>
 		</label>`;
