@@ -104,6 +104,9 @@ const encodeResourceUrl = (url: string) => {
 	return `${url.slice(0, slash + 1)}${encodeURIComponent(url.slice(slash + 1))}`;
 };
 
+const MARKDOWN_LINK_LABEL_RE = String.raw`((?:\\.|[^\]\\])*)`;
+const MARKDOWN_LINK_TITLE_RE = String.raw`(?:\s+("[^"]*"|'[^']*'|\([^)]*\)))?`;
+
 const rewriteResourceReferences = (
 	markdown: string,
 	resources: Map<string, ExportedResource>,
@@ -113,16 +116,16 @@ const rewriteResourceReferences = (
 		let result = chunk;
 
 		result = result.replace(
-			new RegExp(`!\\[([^\\]]*)\\]\\(:\/(${RESOURCE_ID_RE.source})\\)`, 'g'),
-			(match, alt: string, id: string) => {
+			new RegExp(`!\\[${MARKDOWN_LINK_LABEL_RE}\\]\\(\\s*:\/(${RESOURCE_ID_RE.source})${MARKDOWN_LINK_TITLE_RE}\\s*\\)`, 'g'),
+			(match, alt: string, id: string, title = '') => {
 				const resource = resources.get(id);
-				return resource ? `![${alt}](${resource.url})` : match;
+				return resource ? `![${alt}](${resource.url}${title ? ` ${title}` : ''})` : match;
 			},
 		);
 
 		result = result.replace(
-			new RegExp(`\\[([^\\]]*)\\]\\(:\/(${RESOURCE_ID_RE.source})\\)`, 'g'),
-			(match, label: string, id: string) => {
+			new RegExp(`\\[${MARKDOWN_LINK_LABEL_RE}\\]\\(\\s*:\/(${RESOURCE_ID_RE.source})${MARKDOWN_LINK_TITLE_RE}\\s*\\)`, 'g'),
+			(match, label: string, id: string, title = '') => {
 				const resource = resources.get(id);
 				if (!resource) return match;
 
@@ -137,7 +140,7 @@ const rewriteResourceReferences = (
 				if (options.embedPdfResources && resource.mime === 'application/pdf') {
 					return `<embed src="${safeUrl}" type="application/pdf" title="${safeLabel}" style="width: 100%; height: 75vh;" />`;
 				}
-				return `[${label}](${resource.url})`;
+				return `[${label}](${resource.url}${title ? ` ${title}` : ''})`;
 			},
 		);
 
