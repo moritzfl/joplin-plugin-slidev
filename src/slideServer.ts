@@ -315,6 +315,19 @@ export const readInstalledSlidevVersion = async (dataDir: string): Promise<strin
 	}
 };
 
+export const readInstalledPlaywrightVersion = async (dataDir: string): Promise<string | null> => {
+	try {
+		const raw = await readFile(
+			join(dataDir, SLIDEV_WORK_DIR, 'node_modules', 'playwright-chromium', 'package.json'),
+			'utf-8',
+		);
+		const pkg = JSON.parse(raw);
+		return typeof pkg.version === 'string' ? pkg.version : null;
+	} catch {
+		return null;
+	}
+};
+
 const themeNameFromPackage = (packageName: string): string | null => {
 	if (packageName.startsWith('@slidev/theme-')) return packageName.slice('@slidev/theme-'.length);
 	if (packageName.startsWith('slidev-theme-')) return packageName.slice('slidev-theme-'.length);
@@ -460,6 +473,29 @@ const runNpmInstallPackage = (
 	});
 };
 
+const runNpmUninstallPackage = (
+	workDir: string,
+	packageName: string,
+	emit: (line: string) => void,
+): Promise<void> => {
+	return new Promise((resolve, reject) => {
+		const proc = spawn(resolveNpmCmd(), ['uninstall', packageName, '--no-audit', '--no-fund'], {
+			cwd: workDir,
+			env: buildChildEnv(),
+			shell: process.platform === 'win32',
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
+		const onData = (d: Buffer) =>
+			d.toString().split('\n').map(l => l.trimEnd()).filter(Boolean).forEach(emit);
+		proc.stdout?.on('data', onData);
+		proc.stderr?.on('data', onData);
+		proc.on('error', reject);
+		proc.on('close', (code) =>
+			code === 0 ? resolve() : reject(new Error(`npm uninstall exited with code ${code}`)),
+		);
+	});
+};
+
 const ensurePlaywrightChromium = async (workDir: string, emit: (line: string) => void) => {
 	const packagePath = join(workDir, 'node_modules', 'playwright-chromium', 'package.json');
 	const needsInstall = await access(packagePath).then(() => false).catch(() => true);
@@ -478,12 +514,23 @@ export const installSlidevPackage = (
 	return runNpmInstallPackage(slidevWorkspaceDir(dataDir), `${packageName}@latest`, emit);
 };
 
+export const uninstallSlidevPackage = (
+	dataDir: string,
+	packageName: string,
+	emit: (line: string) => void,
+): Promise<void> => {
+	return runNpmUninstallPackage(slidevWorkspaceDir(dataDir), packageName, emit);
+};
+
 export const updateSlidevCore = (dataDir: string, emit: (line: string) => void): Promise<void> =>
 	runNpmInstallPackage(
 		slidevWorkspaceDir(dataDir),
 		['@slidev/cli@latest', '@slidev/theme-default@latest'],
 		emit,
 	);
+
+export const updatePlaywrightChromium = (dataDir: string, emit: (line: string) => void): Promise<void> =>
+	runNpmInstallPackage(slidevWorkspaceDir(dataDir), 'playwright-chromium@latest', emit);
 
 const prepareSlideshowDir = async (
 	markdown: string,

@@ -5,7 +5,7 @@ import pkgLogStyle from './slidevPackageLog.css';
 import installingTemplate from './installingDialog.html';
 import installCompleteTemplate from './installCompleteDialog.html';
 import installFailedTemplate from './installFailedDialog.html';
-import { installSlidevPackage, updateSlidevCore, readInstalledSlidevVersion, listInstalledSlidevPackages, InstalledSlidevPackage } from '../slideServer';
+import { installSlidevPackage, updateSlidevCore, readInstalledSlidevVersion, listInstalledSlidevPackages, InstalledSlidevPackage, uninstallSlidevPackage, updatePlaywrightChromium, readInstalledPlaywrightVersion } from '../slideServer';
 
 // electron is available at runtime inside Joplin (Electron app) but has no bundled types.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -265,6 +265,7 @@ const searchHtml = (
 	githubStars: Map<string, number>,
 	packageMetadata: Map<string, PackageMetadata>,
 	installedSlidevVersion: string | null,
+	installedPlaywrightVersion: string | null,
 	latestSlidevVersion: string | null,
 	message = '',
 	isLoading = false,
@@ -459,6 +460,10 @@ p {
 		: latestSlidevVersion && latestSlidevVersion === installedSlidevVersion
 			? '<span class="version-uptodate">✓ up to date</span>'
 			: ''}
+        <span class="version-label">Playwright</span>
+        ${installedPlaywrightVersion
+		? `<span class="version-chip version-installed">v${esc(installedPlaywrightVersion)} installed</span>`
+		: '<span class="version-none">not installed yet</span>'}
       </div>
     </div>
     <div class="count"><strong>${packages.length}</strong><span>results</span></div>
@@ -559,12 +564,13 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 	let message = state.message;
 	let isLoading = state.isLoading;
 	let installedSlidevVersion = await readInstalledSlidevVersion(dataDir);
+	let installedPlaywrightVersion = await readInstalledPlaywrightVersion(dataDir);
 	let latestSlidevVersion: string | null = null;
 	let loadToken = 0;
 
 	const renderCurrent = () => dialogs.setHtml(
 		dlg,
-		searchHtml(kind, query, packages, installedPackages, githubStars, packageMetadata, installedSlidevVersion, latestSlidevVersion, message, isLoading),
+		searchHtml(kind, query, packages, installedPackages, githubStars, packageMetadata, installedSlidevVersion, installedPlaywrightVersion, latestSlidevVersion, message, isLoading),
 	);
 
 	const applyState = (nextState: SearchState) => {
@@ -607,7 +613,9 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 			{ id: 'submit', title: 'Search' },
 			{ id: 'open-website', title: 'Visit on npm' },
 			{ id: 'confirm', title: 'Install / Update Selected' },
+			{ id: 'uninstall', title: 'Uninstall Selected' },
 			{ id: 'update-slidev', title: 'Update Slidev' },
+			{ id: 'update-playwright', title: 'Update Playwright' },
 			{ id: 'cancel', title: 'Close' },
 		]);
 
@@ -679,6 +687,37 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 			startLoadingSearchState(kind, query);
 		}
 
+		if (result.id === 'uninstall') {
+			if (!packageName) {
+				message = 'Select an installed package card before uninstalling.';
+				continue;
+			}
+			if (!installedPackages.has(packageName)) {
+				message = `${packageName} is not installed.`;
+				continue;
+			}
+
+			const displayName = `${packageName} uninstall`;
+			const logs: string[] = [];
+			await dialogs.setHtml(dlg, installingHtml(displayName, logs));
+			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
+			const openPromise = dialogs.open(dlg).catch(() => null);
+			try {
+				await uninstallSlidevPackage(dataDir, packageName, (line) => {
+					logs.push(line);
+					dialogs.setHtml(dlg, installingHtml(displayName, logs.slice(-40))).catch(() => {});
+				});
+				await dialogs.setHtml(dlg, installCompleteHtml(displayName, logs.slice(-80)));
+				message = `${packageName} uninstalled.`;
+			} catch (e) {
+				await dialogs.setHtml(dlg, installFailedHtml(displayName, logs.slice(-80), e));
+				message = `Uninstall failed for ${packageName}.`;
+			}
+			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
+			await openPromise;
+			startLoadingSearchState(kind, query);
+		}
+
 		if (result.id === 'update-slidev') {
 			if (!installedSlidevVersion) {
 				message = 'Workspace is not set up yet — start a presentation first to initialize it.';
@@ -704,6 +743,33 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
 			await openPromise;
 			installedSlidevVersion = await readInstalledSlidevVersion(dataDir);
+		}
+
+		if (result.id === 'update-playwright') {
+			if (!installedSlidevVersion) {
+				message = 'Workspace is not set up yet — start a presentation first to initialize it.';
+				continue;
+			}
+
+			const displayName = 'playwright-chromium';
+			const logs: string[] = [];
+			await dialogs.setHtml(dlg, installingHtml(displayName, logs));
+			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
+			const openPromise = dialogs.open(dlg).catch(() => null);
+			try {
+				await updatePlaywrightChromium(dataDir, (line) => {
+					logs.push(line);
+					dialogs.setHtml(dlg, installingHtml(displayName, logs.slice(-40))).catch(() => {});
+				});
+				await dialogs.setHtml(dlg, installCompleteHtml(displayName, logs.slice(-80)));
+				message = 'Playwright updated. Restart any running export to use the new version.';
+			} catch (e) {
+				await dialogs.setHtml(dlg, installFailedHtml(displayName, logs.slice(-80), e));
+				message = 'Playwright update failed.';
+			}
+			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
+			await openPromise;
+			installedPlaywrightVersion = await readInstalledPlaywrightVersion(dataDir);
 		}
 	}
 };
