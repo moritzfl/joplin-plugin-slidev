@@ -493,12 +493,14 @@ const formValue = (formData: any, key: string): string => {
 const trySearchPackages = async (kind: PackageKind, query: string): Promise<{ packages: NpmSearchObject[]; message: string }> => {
 	try {
 		const packages = await searchPackages(kind, query);
-		return { packages, message: `Found ${packages.length} package(s).` };
+		return { packages, message: '' };
 	} catch (e) {
 		const message = e instanceof Error ? e.message : String(e);
 		return { packages: [], message: `Could not search npm: ${message}` };
 	}
 };
+
+const joinMessages = (...messages: string[]): string => messages.filter(Boolean).join(' ');
 
 const allInstalledPackageMap = async (dataDir: string) => {
 	const [themes, addons] = await Promise.all([
@@ -517,7 +519,6 @@ const loadMarketplaceState = async (dataDir: string): Promise<MarketplaceState> 
 	const packages = [...themesResult.packages, ...addonsResult.packages];
 	const packageMetadata = await loadPackageMetadata(packages);
 	const githubStars = await loadGithubStars(packages, packageMetadata);
-	const messages = [themesResult.message, addonsResult.message, `Found ${installedPackages.size} installed package(s).`];
 	return {
 		themes: themesResult.packages,
 		addons: addonsResult.packages,
@@ -526,7 +527,7 @@ const loadMarketplaceState = async (dataDir: string): Promise<MarketplaceState> 
 		installedPackages,
 		githubStars,
 		packageMetadata,
-		message: messages.join(' '),
+		message: joinMessages(themesResult.message, addonsResult.message),
 		isLoading: false,
 	};
 };
@@ -561,7 +562,7 @@ const refreshMarketplaceSearch = async (state: MarketplaceState, dataDir: string
 		installedPackages,
 		packageMetadata: new Map([...state.packageMetadata, ...packageMetadata]),
 		githubStars: new Map([...state.githubStars, ...githubStars]),
-		message: `${themesResult.message} ${addonsResult.message} Found ${installedPackages.size} installed package(s).`,
+		message: joinMessages(themesResult.message, addonsResult.message),
 		isLoading: false,
 	};
 };
@@ -603,7 +604,7 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 	const initialLoad = Promise.all([fetchLatestSlidevVersion(), fetchLatestPlaywrightVersion(), loadMarketplaceState(dataDir)]).then(([slidevVersion, playwrightVersion, nextState]) => {
 		latestSlidevVersion = slidevVersion;
 		latestPlaywrightVersion = playwrightVersion;
-		state = setupMessage ? { ...nextState, message: `${setupMessage} ${nextState.message}` } : nextState;
+		state = setupMessage ? { ...nextState, message: joinMessages(setupMessage, nextState.message) } : nextState;
 		renderCurrent().catch(() => {});
 	}).catch((e) => {
 		state = { ...state, message: `Could not load marketplace packages: ${e instanceof Error ? e.message : String(e)}`, isLoading: false };
