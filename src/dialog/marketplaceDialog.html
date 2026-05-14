@@ -1,0 +1,46 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/>
+<style>__STYLE__</style></head><body>
+<form name="packagePicker">
+<button class="search-submit" type="submit" name="action" value="submit" aria-hidden="true" tabindex="-1">Search</button>
+<input class="view-radio" id="view-theme" type="radio" name="view" value="theme"__THEME_CHECKED__ />
+<input class="view-radio" id="view-addon" type="radio" name="view" value="addon"__ADDON_CHECKED__ />
+<input class="view-radio" id="view-installed" type="radio" name="view" value="installed"__INSTALLED_CHECKED__ />
+<div class="shell">
+  <section class="hero">
+    <div>
+      <div class="eyebrow">Slidev Marketplace</div>
+      <h1>Find themes and addons</h1>
+      <p class="sub">Browse themes, addons, and installed packages. Use Search to query npm for the selected section.</p>
+      <div class="version-row">
+        <span class="version-label">Slidev</span>
+        __SLIDEV_STATUS__
+        __SLIDEV_UPDATE_STATUS__
+        <span class="version-label">Playwright</span>
+        __PLAYWRIGHT_STATUS__
+        __PLAYWRIGHT_UPDATE_STATUS__
+      </div>
+    </div>
+    <div class="count">
+      <strong class="count-value count-theme">__THEME_COUNT__</strong>
+      <strong class="count-value count-addon">__ADDON_COUNT__</strong>
+      <strong class="count-value count-installed">__INSTALLED_COUNT__</strong>
+      <span class="count-label label-results">results</span>
+      <span class="count-label label-installed">installed</span>
+    </div>
+  </section>
+  <section class="controls">
+    <div class="search"><input id="query" name="query" value="__QUERY__" placeholder="__QUERY_PLACEHOLDER__" /></div>
+    <div class="tabs" aria-label="Marketplace sections">__TABS__</div>
+  </section>
+  __MESSAGE__
+  <section class="action-panel" aria-label="Selected package actions">
+    <strong>Selected package actions</strong>
+    <span class="help-text help-install">Select a package to install/update it or open its npm page from the footer.</span>
+    <span class="help-text help-installed">Select Slidev, Playwright, or an installed package to update it. Uninstall only removes packages.</span>
+  </section>
+  <section class="grid view view-theme">__THEME_CARDS__</section>
+  <section class="grid view view-addon">__ADDON_CARDS__</section>
+  <section class="grid view view-installed">__INSTALLED_CARDS__</section>
+</div>
+</form>
+</body></html>
