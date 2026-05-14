@@ -43,6 +43,16 @@ describe('slidevMatter', () => {
 		expect(findSlidevMatterBlock('---\n\n# Slide\n---')).toBeNull();
 	});
 
+	it('ignores per-slide matter blocks when updating document defaults', () => {
+		const markdown = '# Intro\n\n---\nlayout: two-cols\n---\n# Details';
+
+		expect(updateSlidevMatter(markdown, parseData, dumpData, (data, hasMatter) => {
+			expect(hasMatter).toBe(false);
+			data.editor = false;
+			return true;
+		})).toBe('---\neditor: false\n---\n\n# Intro\n\n---\nlayout: two-cols\n---\n# Details');
+	});
+
 	it('finds leading yaml codeblock matter', () => {
 		expect(findSlidevMatterBlock('```yaml\nlayout: cover\n```\n# Slide')).toEqual({
 			style: 'yaml',

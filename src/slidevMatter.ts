@@ -23,7 +23,7 @@ export const isSlidevMatterClosingLine = (line: string): boolean =>
 
 export const findSlidevMatterBlock = (markdown: string): SlidevMatterBlock | null => {
 	const match = markdown.match(MATTER_RE);
-	if (match) {
+	if (match && match.index === 0) {
 		const opener = match[1].trimEnd();
 		const firstBodyLine = match[2].split(/\r?\n/, 1)[0] ?? '';
 		if (isSlidevMatterOpeningLine(opener, firstBodyLine)) {
