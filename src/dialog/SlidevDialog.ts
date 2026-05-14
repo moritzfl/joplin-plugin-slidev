@@ -100,189 +100,192 @@ export const showSlidevPresentation = async (
 	if (presentationActive) return;
 	presentationActive = true;
 
-	const dlg = await getHandle();
+	try {
+		const dlg = await getHandle();
 
-	const port = await findAvailablePort(settings.defaultPort);
-	const initialUrl = slidevUrl(port, settings.initialView);
+		const port = await findAvailablePort(settings.defaultPort);
+		const initialUrl = slidevUrl(port, settings.initialView);
 
-	await dialogs.setFitToContent(dlg, false);
-	await dialogs.setHtml(dlg, loadingHtml(port, []));
-	await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Cancel' }]);
+		await dialogs.setFitToContent(dlg, false);
+		await dialogs.setHtml(dlg, loadingHtml(port, []));
+		await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Cancel' }]);
 
-	let server: SlidevServer | null = null;
-	let cancelled = false;
-	let serverReady = false;
-	let serverFailed = false;
-	let tunnelEntryUrl = '';
-	let tunnelStatus = '';
-	const tunnelEnabled = settings.remoteTunnel;
+		let server: SlidevServer | null = null;
+		let cancelled = false;
+		let serverReady = false;
+		let serverFailed = false;
+		let tunnelEntryUrl = '';
+		let tunnelStatus = '';
+		const tunnelEnabled = settings.remoteTunnel;
 
-	const logLines: string[] = [];
-	const MAX_LOG_LINES = 30;
-	let updateScheduled = false;
-	let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
+		const logLines: string[] = [];
+		const MAX_LOG_LINES = 30;
+		let updateScheduled = false;
+		let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
 
-	const scheduleHtmlUpdate = () => {
-		if (updateScheduled || cancelled) return;
-		updateScheduled = true;
-		setTimeout(async () => {
-			updateScheduled = false;
-			if (cancelled) return;
-			const slice = logLines.slice(-MAX_LOG_LINES);
-			const html = serverReady
-				? readyHtml(port, slice, tunnelEntryUrl, tunnelEnabled, tunnelStatus)
-				: serverFailed
-					? failedHtml(slice)
-					: loadingHtml(port, slice);
-			try {
-				await dialogs.setHtml(dlg, html);
-			} catch { /* dialog may have been closed */ }
-		}, 150);
-	};
-
-	const setTunnelStatus = (message: string) => {
-		tunnelStatus = message;
-		if (statusClearTimer) clearTimeout(statusClearTimer);
-		statusClearTimer = setTimeout(() => {
-			tunnelStatus = '';
-			scheduleHtmlUpdate();
-		}, 6000);
-		scheduleHtmlUpdate();
-	};
-
-	const preprocess = makeMarkdownPreprocessor({
-		disableCompatFixes: settings.disableMarkdownCompatFixes,
-		defaultTheme: settings.defaultTheme,
-		colorSchema: settings.colorSchema,
-		aspectRatio: settings.aspectRatio,
-		lineNumbers: settings.lineNumbers,
-		wakeLock: settings.wakeLock,
-		selectable: settings.selectable,
-		contextMenu: settings.contextMenu,
-		overviewSnapshots: settings.overviewSnapshots,
-		embedAudioResources: settings.embedAudioResources,
-		embedVideoResources: settings.embedVideoResources,
-		embedPdfResources: settings.embedPdfResources,
-		slideNumber: settings.slideNumber,
-		slideProgressBar: settings.slideProgressBar,
-	});
-
-	const extraFiles = buildSlidevExtraFiles(settings);
-
-	// Slidev prints "localhost:<port>" in its startup table when the server is ready.
-	// Treat that as the fastest signal; waitForServerReady below is a fallback.
-	const handleServerReady = async () => {
-		if (cancelled || serverReady) return;
-		serverReady = true;
-		if (settings.initialView !== 'none') {
-			try { await shell.openExternal(initialUrl); } catch { /* ignore */ }
-		}
-		try {
-			await dialogs.setHtml(dlg, readyHtml(port, logLines.slice(-MAX_LOG_LINES), tunnelEntryUrl, tunnelEnabled, tunnelStatus));
-			const buttons = [
-				{ id: 'open-browser', title: 'Presentation' },
-				{ id: 'open-presenter', title: 'Presenter' },
-				{ id: 'open-overview', title: 'Overview' },
-			];
-			if (tunnelEnabled) {
-				buttons.push({ id: 'open-tunnel-entry', title: 'Tunnel Entry' });
-			}
-			buttons.push(
-				{ id: 'cancel', title: 'Close' },
-			);
-			await dialogs.setButtons(dlg, buttons);
-		} catch { /* dialog may have been closed */ }
-	};
-
-	const serverTask = (async () => {
-		try {
-			server = await startSlidevServer(
-				markdown,
-				dataDir,
-				port,
-				(line) => {
-					if (cancelled) return;
-					logLines.push(`[${ts()}]  ${line}`);
-					const tunnelMatch = line.match(/remote via tunnel\s*>\s*(https?:\/\/\S+)/);
-					if (tunnelMatch) {
-						tunnelEntryUrl = tunnelMatch[1];
-					}
-					scheduleHtmlUpdate();
-					// Prefer Slidev's own ready log over waiting for the TCP fallback.
-					if (!serverReady && line.includes(`localhost:${port}`)) {
-						handleServerReady().catch(() => {});
-					}
-				},
-				preprocess,
-				extraFiles,
-				{
-					remoteAccess: settings.remoteAccess,
-					remotePassword: settings.remotePassword,
-					remoteTunnel: settings.remoteTunnel,
-					remoteBind: settings.remoteBind,
-				},
-			);
-
-			// Any Slidev process exit while the dialog is open is a failure —
-			// whether it crashed before ready or after.
-			server.process.once('close', (code) => {
+		const scheduleHtmlUpdate = () => {
+			if (updateScheduled || cancelled) return;
+			updateScheduled = true;
+			setTimeout(async () => {
+				updateScheduled = false;
 				if (cancelled) return;
-				logLines.push(`[${ts()}]  Process exited with code ${code}.`);
-				serverReady = false;
-				serverFailed = true;
-				scheduleHtmlUpdate();
-				dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]).catch(() => {});
-			});
+				const slice = logLines.slice(-MAX_LOG_LINES);
+				const html = serverReady
+					? readyHtml(port, slice, tunnelEntryUrl, tunnelEnabled, tunnelStatus)
+					: serverFailed
+						? failedHtml(slice)
+						: loadingHtml(port, slice);
+				try {
+					await dialogs.setHtml(dlg, html);
+				} catch { /* dialog may have been closed */ }
+			}, 150);
+		};
 
-			waitForServerReady(port, 60000).then((ready) => {
-				if (ready) {
-					handleServerReady().catch(() => {});
-				} else if (!serverReady && !serverFailed && !cancelled) {
-					logLines.push(`[${ts()}]  Timed out waiting for Slidev to become ready.`);
+		const setTunnelStatus = (message: string) => {
+			tunnelStatus = message;
+			if (statusClearTimer) clearTimeout(statusClearTimer);
+			statusClearTimer = setTimeout(() => {
+				tunnelStatus = '';
+				scheduleHtmlUpdate();
+			}, 6000);
+			scheduleHtmlUpdate();
+		};
+
+		const preprocess = makeMarkdownPreprocessor({
+			disableCompatFixes: settings.disableMarkdownCompatFixes,
+			defaultTheme: settings.defaultTheme,
+			colorSchema: settings.colorSchema,
+			aspectRatio: settings.aspectRatio,
+			lineNumbers: settings.lineNumbers,
+			wakeLock: settings.wakeLock,
+			selectable: settings.selectable,
+			contextMenu: settings.contextMenu,
+			overviewSnapshots: settings.overviewSnapshots,
+			embedAudioResources: settings.embedAudioResources,
+			embedVideoResources: settings.embedVideoResources,
+			embedPdfResources: settings.embedPdfResources,
+			slideNumber: settings.slideNumber,
+			slideProgressBar: settings.slideProgressBar,
+		});
+
+		const extraFiles = buildSlidevExtraFiles(settings);
+
+		// Slidev prints "localhost:<port>" in its startup table when the server is ready.
+		// Treat that as the fastest signal; waitForServerReady below is a fallback.
+		const handleServerReady = async () => {
+			if (cancelled || serverReady) return;
+			serverReady = true;
+			if (settings.initialView !== 'none') {
+				try { await shell.openExternal(initialUrl); } catch { /* ignore */ }
+			}
+			try {
+				await dialogs.setHtml(dlg, readyHtml(port, logLines.slice(-MAX_LOG_LINES), tunnelEntryUrl, tunnelEnabled, tunnelStatus));
+				const buttons = [
+					{ id: 'open-browser', title: 'Presentation' },
+					{ id: 'open-presenter', title: 'Presenter' },
+					{ id: 'open-overview', title: 'Overview' },
+				];
+				if (tunnelEnabled) {
+					buttons.push({ id: 'open-tunnel-entry', title: 'Tunnel Entry' });
+				}
+				buttons.push(
+					{ id: 'cancel', title: 'Close' },
+				);
+				await dialogs.setButtons(dlg, buttons);
+			} catch { /* dialog may have been closed */ }
+		};
+
+		const serverTask = (async () => {
+			try {
+				server = await startSlidevServer(
+					markdown,
+					dataDir,
+					port,
+					(line) => {
+						if (cancelled) return;
+						logLines.push(`[${ts()}]  ${line}`);
+						const tunnelMatch = line.match(/remote via tunnel\s*>\s*(https?:\/\/\S+)/);
+						if (tunnelMatch) {
+							tunnelEntryUrl = tunnelMatch[1];
+						}
+						scheduleHtmlUpdate();
+						// Prefer Slidev's own ready log over waiting for the TCP fallback.
+						if (!serverReady && line.includes(`localhost:${port}`)) {
+							handleServerReady().catch(() => {});
+						}
+					},
+					preprocess,
+					extraFiles,
+					{
+						remoteAccess: settings.remoteAccess,
+						remotePassword: settings.remotePassword,
+						remoteTunnel: settings.remoteTunnel,
+						remoteBind: settings.remoteBind,
+					},
+				);
+
+				// Any Slidev process exit while the dialog is open is a failure —
+				// whether it crashed before ready or after.
+				server.process.once('close', (code) => {
+					if (cancelled) return;
+					logLines.push(`[${ts()}]  Process exited with code ${code}.`);
+					serverReady = false;
 					serverFailed = true;
 					scheduleHtmlUpdate();
 					dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]).catch(() => {});
-				}
-			}).catch(() => {});
-			if (cancelled) stopSlidevServer(server);
-		} catch (e) {
-			if (cancelled) return;
-			logLines.push(`[${ts()}]  Error: ${(e as Error).message ?? String(e)}`);
-			serverFailed = true;
-			scheduleHtmlUpdate();
-			await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
-		}
-	})();
+				});
 
-	// Open dialog — loop so "Presentation" re-opens without closing.
-	let result = await dialogs.open(dlg);
-	while (
-		result?.id === 'open-browser'
-		|| result?.id === 'open-presenter'
-		|| result?.id === 'open-overview'
-		|| result?.id === 'open-tunnel-entry'
-	) {
-		if (result.id === 'open-presenter') await shell.openExternal(slidevUrl(port, 'presenter')).catch(() => {});
-		else if (result.id === 'open-overview') await shell.openExternal(slidevUrl(port, 'overview')).catch(() => {});
-		else if (result.id === 'open-tunnel-entry') {
-			if (!tunnelEntryUrl) {
-				setTunnelStatus('Cloudflare tunnel entry is not ready yet. Wait until Slidev logs "remote via tunnel".');
-			} else if (await isHostnameResolvable(tunnelEntryUrl)) {
-				await shell.openExternal(tunnelEntryUrl).catch(() => {});
-			} else {
-				setTunnelStatus('Cloudflare tunnel host is not resolvable yet. Wait a few seconds and try again.');
+				waitForServerReady(port, 60000).then((ready) => {
+					if (ready) {
+						handleServerReady().catch(() => {});
+					} else if (!serverReady && !serverFailed && !cancelled) {
+						logLines.push(`[${ts()}]  Timed out waiting for Slidev to become ready.`);
+						serverFailed = true;
+						scheduleHtmlUpdate();
+						dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]).catch(() => {});
+					}
+				}).catch(() => {});
+				if (cancelled) stopSlidevServer(server);
+			} catch (e) {
+				if (cancelled) return;
+				logLines.push(`[${ts()}]  Error: ${(e as Error).message ?? String(e)}`);
+				serverFailed = true;
+				scheduleHtmlUpdate();
+				await dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]);
 			}
-		}
-		else await shell.openExternal(slidevUrl(port, 'slides')).catch(() => {});
-		result = await dialogs.open(dlg);
-	}
-	cancelled = true;
+		})();
 
-	try {
-		await serverTask;
+		// Open dialog — loop so "Presentation" re-opens without closing.
+		let result = await dialogs.open(dlg);
+		while (
+			result?.id === 'open-browser'
+			|| result?.id === 'open-presenter'
+			|| result?.id === 'open-overview'
+			|| result?.id === 'open-tunnel-entry'
+		) {
+			if (result.id === 'open-presenter') await shell.openExternal(slidevUrl(port, 'presenter')).catch(() => {});
+			else if (result.id === 'open-overview') await shell.openExternal(slidevUrl(port, 'overview')).catch(() => {});
+			else if (result.id === 'open-tunnel-entry') {
+				if (!tunnelEntryUrl) {
+					setTunnelStatus('Cloudflare tunnel entry is not ready yet. Wait until Slidev logs "remote via tunnel".');
+				} else if (await isHostnameResolvable(tunnelEntryUrl)) {
+					await shell.openExternal(tunnelEntryUrl).catch(() => {});
+				} else {
+					setTunnelStatus('Cloudflare tunnel host is not resolvable yet. Wait a few seconds and try again.');
+				}
+			}
+			else await shell.openExternal(slidevUrl(port, 'slides')).catch(() => {});
+			result = await dialogs.open(dlg);
+		}
+		cancelled = true;
+
+		try {
+			await serverTask;
+		} finally {
+			if (statusClearTimer) clearTimeout(statusClearTimer);
+			if (server) stopSlidevServer(server);
+		}
 	} finally {
-		if (statusClearTimer) clearTimeout(statusClearTimer);
-		if (server) stopSlidevServer(server);
 		presentationActive = false;
 	}
 };
