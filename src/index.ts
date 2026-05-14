@@ -97,7 +97,7 @@ joplin.plugins.register({
 		const managePackagesCommandName = `${pluginPrefix}manage-slidev-packages`;
 		await joplin.commands.register({
 			name: managePackagesCommandName,
-			label: 'Manage Slidev Themes/Addons',
+			label: 'Manage Slidev',
 			iconName: 'fas fa-puzzle-piece',
 			execute: async () => {
 				try {

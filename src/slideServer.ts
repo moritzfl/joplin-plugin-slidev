@@ -532,6 +532,19 @@ export const updateSlidevCore = (dataDir: string, emit: (line: string) => void):
 export const updatePlaywrightChromium = (dataDir: string, emit: (line: string) => void): Promise<void> =>
 	runNpmInstallPackage(slidevWorkspaceDir(dataDir), 'playwright-chromium@latest', emit);
 
+export const ensureSlidevWorkspace = async (dataDir: string, emit: (line: string) => void): Promise<void> => {
+	const workDir = slidevWorkspaceDir(dataDir);
+	await mkdir(workDir, { recursive: true });
+	const slidevBin = join(workDir, 'node_modules', '.bin', 'slidev');
+	const needsInstall = await access(slidevBin).then(() => false).catch(() => true);
+	if (!needsInstall) return;
+	await writeFile(join(workDir, 'package.json'), WORK_DIR_PACKAGE_JSON, 'utf-8');
+	emit('First-time setup: installing @slidev/cli and themes via npm…');
+	emit('(This takes ~30 s once; subsequent starts are instant.)');
+	await runNpmInstallPackage(workDir, [], emit);
+	emit('npm install complete.');
+};
+
 const prepareSlideshowDir = async (
 	markdown: string,
 	dataDir: string,
@@ -566,11 +579,7 @@ const prepareSlideshowDir = async (
 	const needsInstall = await access(slidevBin).then(() => false).catch(() => true);
 
 	if (needsInstall) {
-		await writeFile(join(workDir, 'package.json'), WORK_DIR_PACKAGE_JSON, 'utf-8');
-		emit('First-time setup: installing @slidev/cli and themes via npm…');
-		emit('(This takes ~30 s once; subsequent starts are instant.)');
-		await runNpmInstallPackage(workDir, [], emit);
-		emit('npm install complete.');
+		await ensureSlidevWorkspace(dataDir, emit);
 	}
 
 	return { workDir, slidevBin };
