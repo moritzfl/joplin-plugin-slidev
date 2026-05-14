@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-14
+- Added management for installed Slidev themes, addons, and export dependencies
+- Improved the Slidev package marketplace
+- Fixed several presentation startup, export, and cleanup reliability issues
+- Improved support for Joplin attachment links in Slidev Markdown
+
 ## [0.2.4] - 2026-05-13
 - Fixed PDF export filenames with spaces or shell metacharacters on Windows
 - Redacted remote presentation passwords from Slidev logs
