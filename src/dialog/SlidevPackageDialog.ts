@@ -640,11 +640,16 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 			const query = formValue(result.formData, 'query');
 			state = loadingMarketplaceState(`Searching marketplace for "${query}"...`, query);
 			await renderCurrent();
+			const loadingDialog = dialogs.open(dlg).catch(() => null);
 			if (activeView === 'installed') {
 				state = { ...state, installedPackages: await allInstalledPackageMap(dataDir), message: 'Refreshed installed packages.', isLoading: false };
+				await renderCurrent();
+				await loadingDialog;
 				continue;
 			}
 			state = await refreshMarketplaceSearch(state, dataDir, query);
+			await renderCurrent();
+			await loadingDialog;
 			continue;
 		}
 
