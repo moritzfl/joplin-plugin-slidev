@@ -160,6 +160,7 @@ const registerSlidevExportModule = async (
                         embedPdfResources: settings.embedPdfResources,
                         slideNumber: settings.slideNumber,
                         slideProgressBar: settings.slideProgressBar,
+                        failOnMissingResources: true,
                     }),
                     buildSlidevExtraFiles(settings),
                 );
@@ -214,6 +215,7 @@ const registerSlidevMarkdownBundleExportModule = async () => {
                     embedPdfResources: settings.embedPdfResources,
                     slideNumber: settings.slideNumber,
                     slideProgressBar: settings.slideProgressBar,
+                    failOnMissingResources: true,
                     bundleOutputDir: outputDir,
                 });
 

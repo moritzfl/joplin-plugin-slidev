@@ -19,6 +19,8 @@ describe('buildSlidevExtraFiles', () => {
 		expect(files['vite.config.ts']).toContain("source.startsWith('./resources/')");
 		expect(files['vite.config.ts']).toContain("source.startsWith('resources/')");
 		expect(files['vite.config.ts']).toContain("importer?.includes('slides.md__slidev_')");
+		expect(files['vite.config.ts']).toContain("relativeTarget.startsWith('..' + sep)");
+		expect(files['vite.config.ts']).not.toContain('return resolve(__dirname, source');
 		expect(files['vite.config.ts']).not.toContain("source.startsWith('/resources/");
 	});
 

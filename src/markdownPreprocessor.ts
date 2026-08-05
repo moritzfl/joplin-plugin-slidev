@@ -1,6 +1,6 @@
 import joplin from 'api';
 import { mkdir, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { dirname, join, resolve } from 'path';
 import MarkdownIt from 'markdown-it';
 import * as yaml from 'js-yaml';
 import { parseSlidevMatter, serializeSlidevMatter, updateSlidevMatter } from './slidevMatter';
@@ -25,6 +25,7 @@ interface MarkdownPreprocessorOptions {
 	embedPdfResources: boolean;
 	slideNumber: string;
 	slideProgressBar: string;
+	failOnMissingResources?: boolean;
 	// When set, resources are written into that bundle directory. Otherwise they
 	// are written into the managed Slidev workspace next to slides.md.
 	bundleOutputDir?: string;
@@ -166,59 +167,73 @@ const exportResources = async (
 	await mkdir(resourceDir, { recursive: true });
 
 	const usedFilenames = new Set<string>();
+	const filenameKey = (filename: string) => filename.normalize('NFC').toLowerCase();
 
 	const uniqueFilename = (base: string, ext: string): string => {
 		const candidate = `${base}.${ext}`;
-		if (!usedFilenames.has(candidate)) { usedFilenames.add(candidate); return candidate; }
+		if (!usedFilenames.has(filenameKey(candidate))) {
+			usedFilenames.add(filenameKey(candidate));
+			return candidate;
+		}
 		let n = 2;
-		while (usedFilenames.has(`${base}_${n}.${ext}`)) n++;
+		while (usedFilenames.has(filenameKey(`${base}_${n}.${ext}`))) n++;
 		const result = `${base}_${n}.${ext}`;
-		usedFilenames.add(result);
+		usedFilenames.add(filenameKey(result));
 		return result;
 	};
 
 	const exportedResources = new Map<string, ExportedResource>();
+	const missingResourceIds = new Set<string>();
 	for (const id of ids) {
 		try {
 			const meta = await joplin.data.get(['resources', id], {
 				fields: ['id', 'file_extension', 'mime', 'filename', 'title'],
 			}) as { file_extension?: string; mime?: string; filename?: string; title?: string };
 
-			// Derive extension from metadata or mime type.
-			let ext = (meta.file_extension ?? '').replace(/^\./, '');
-			if (!ext && meta.mime) {
-				const mimeExt: Record<string, string> = {
-					'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif',
-					'image/webp': 'webp', 'image/svg+xml': 'svg',
-					'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/wav': 'wav',
-					'video/mp4': 'mp4', 'video/webm': 'webm', 'video/ogg': 'ogv',
-					'application/pdf': 'pdf',
-				};
-				ext = mimeExt[meta.mime] ?? 'bin';
-			}
-			ext = ext || 'bin';
+			const mimeExt: Record<string, string> = {
+				'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif',
+				'image/webp': 'webp', 'image/svg+xml': 'svg',
+				'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/wav': 'wav',
+				'video/mp4': 'mp4', 'video/webm': 'webm', 'video/ogg': 'ogv',
+				'application/pdf': 'pdf',
+			};
+			const metadataExtension = (meta.file_extension ?? '').replace(/^\./, '');
+			const ext = /^[a-z0-9]{1,16}$/i.test(metadataExtension) ? metadataExtension : (mimeExt[meta.mime ?? ''] ?? 'bin');
 
 			// Prefer the original filename, fall back to title, then the ID hash.
 			// Strip any extension already present so we don't get double extensions.
 			const rawName = (meta.filename || meta.title || '').replace(/\.[^.]+$/, '');
-			const base = rawName
+			let base = rawName
 				? rawName.replace(/[^\w\s.\-]/g, '_').trim() || id
 				: id;
+			base = base.replace(/[. ]+$/, '') || id;
+			if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(base)) base = `_${base}`;
 
 			const filename = uniqueFilename(base, ext);
 			const buf = await getResourceBuffer(id);
 			if (!buf) {
 				console.error(`[Slidev] Could not read resource ${id}, skipping.`);
+				missingResourceIds.add(id);
 				continue;
 			}
 
-			await writeFile(join(resourceDir, filename), buf);
+			const outputPath = resolve(resourceDir, filename);
+			if (dirname(outputPath) !== resolve(resourceDir)) {
+				console.error(`[Slidev] Refusing to export resource ${id} outside the resource directory.`);
+				missingResourceIds.add(id);
+				continue;
+			}
+			await writeFile(outputPath, buf);
 			const url = encodeResourceUrl(`${urlPrefix}${filename}`);
 			exportedResources.set(id, { url, mime: meta.mime ?? '' });
 			console.log(`[Slidev] Exported resource ${id} → ${resourceDir}/${filename}`);
 		} catch (e) {
 			console.error(`[Slidev] Failed to export resource ${id}:`, e);
+			missingResourceIds.add(id);
 		}
+	}
+	if (options.failOnMissingResources && missingResourceIds.size > 0) {
+		throw new Error(`Could not export Joplin resource(s): ${[...missingResourceIds].join(', ')}`);
 	}
 	return rewriteResourceReferences(markdown, exportedResources, options);
 };
@@ -342,8 +357,8 @@ const rewriteAsteriskBullets = (markdown: string): string =>
 const sanitiseForSlidev = (markdown: string): string =>
 	applyOutsideFences(markdown, chunk => rewriteAsteriskBullets(chunk)
 		// Strip any :/id refs that weren't successfully exported (Vite can't import them).
-		.replace(/!\[([^\]]*)\]\(:\/[a-f0-9]+\)/g, '*[image — Joplin resource]*')
-		.replace(/\[([^\]]*)\]\(:\/[a-f0-9]+\)/g, '$1')
+		.replace(/!\[([^]]*)]\(:\/[a-f0-9]+\)/g, '*[image — Joplin resource]*')
+		.replace(/\[([^]]*)]\(:\/[a-f0-9]+\)/g, '$1')
 		.replace(/:\/[a-f0-9]+/g, ''),
 	);
 

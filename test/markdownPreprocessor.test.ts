@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -120,5 +120,50 @@ describe('markdownPreprocessor', () => {
 
 		expect(result).toContain('<audio src="./resources/theme%20song.mp3" controls style="width: 100%;"></audio>');
 		expect(result).not.toContain(`:/${resourceId}`);
+	});
+
+	it('contains unsafe metadata extensions inside the resource directory', async () => {
+		mockResource({
+			file_extension: '../../../escaped',
+			mime: 'image/png',
+			filename: 'chart.png',
+		});
+
+		const workDir = await makeTempDir();
+		const preprocess = makeMarkdownPreprocessor(baseOptions);
+		const result = await preprocess(`![chart](:/${resourceId})`, workDir);
+
+		expect(result).toContain('![chart](./resources/chart.png)');
+		expect(await readdir(join(workDir, 'resources'))).toEqual(['chart.png']);
+	});
+
+	it('uses portable unique filenames on case-insensitive filesystems', async () => {
+		const secondResourceId = 'fedcba9876543210fedcba9876543210';
+		getMock.mockImplementation(async (path: string[]) => {
+			if (path[2] === 'file') return Buffer.from(path[1]);
+			if (path[1] === resourceId) return { file_extension: 'png', mime: 'image/png', filename: 'Photo.png' };
+			if (path[1] === secondResourceId) return { file_extension: 'png', mime: 'image/png', filename: 'photo.png' };
+			return undefined;
+		});
+
+		const workDir = await makeTempDir();
+		const preprocess = makeMarkdownPreprocessor(baseOptions);
+		const result = await preprocess(`![](:/${resourceId})\n![](:/${secondResourceId})`, workDir);
+
+		expect(result).toContain('./resources/Photo.png');
+		expect(result).toContain('./resources/photo_2.png');
+		expect((await readdir(join(workDir, 'resources'))).sort()).toEqual(['Photo.png', 'photo_2.png']);
+	});
+
+	it('fails strict exports when a referenced resource cannot be read', async () => {
+		getMock.mockImplementation(async (path: string[]) => {
+			if (path[2] === 'file') return null;
+			return { file_extension: 'png', mime: 'image/png', filename: 'missing.png' };
+		});
+
+		const workDir = await makeTempDir();
+		const preprocess = makeMarkdownPreprocessor({ ...baseOptions, failOnMissingResources: true });
+
+		await expect(preprocess(`![missing](:/${resourceId})`, workDir)).rejects.toThrow(resourceId);
 	});
 });

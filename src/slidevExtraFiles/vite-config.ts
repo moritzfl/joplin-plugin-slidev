@@ -1,5 +1,15 @@
-export const buildViteConfigContent = (remoteTunnel: boolean): string => `import { resolve } from 'node:path';
+export const buildViteConfigContent = (remoteTunnel: boolean): string => `import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { defineConfig } from 'vite';
+
+const resourceRoot = resolve(__dirname, 'resources');
+
+const resolveResource = (source) => {
+  const prefix = source.startsWith('./resources/') ? './resources/' : 'resources/';
+  const target = resolve(resourceRoot, source.slice(prefix.length));
+  const relativeTarget = relative(resourceRoot, target);
+  if (!relativeTarget || relativeTarget === '..' || relativeTarget.startsWith('..' + sep) || isAbsolute(relativeTarget)) return null;
+  return target;
+};
 
 export default defineConfig({
   plugins: [{
@@ -7,8 +17,7 @@ export default defineConfig({
     enforce: 'pre',
     resolveId(source, importer) {
       if (importer?.includes('slides.md__slidev_')) {
-        if (source.startsWith('./resources/')) return resolve(__dirname, source.slice(2));
-        if (source.startsWith('resources/')) return resolve(__dirname, source);
+        if (source.startsWith('./resources/') || source.startsWith('resources/')) return resolveResource(source);
       }
       return null;
     },
