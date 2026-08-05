@@ -18,14 +18,14 @@ npm install
 echo "==> Building plugin..."
 npm run dist
 
-JPL_FILE="$(ls "$PROJECT_DIR/publish/"*.jpl 2>/dev/null | head -1)"
-if [ -z "$JPL_FILE" ]; then
+JPL_FILE="$PROJECT_DIR/publish/de.moritzf.slidev-integration.jpl"
+if [ ! -f "$JPL_FILE" ]; then
   echo "ERROR: No .jpl file found in publish/ — build may have failed."
   exit 1
 fi
 
 mkdir -p "$PLUGIN_DIR"
-rm -f "$PLUGIN_DIR/"*.jpl
+rm -f "$PLUGIN_DIR/de.moritzf.slidev-integration.jpl"
 
 echo "==> Installing plugin to test profile: $PLUGIN_DIR"
 cp "$JPL_FILE" "$PLUGIN_DIR/"

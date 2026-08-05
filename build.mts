@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import * as glob from 'glob';
 import * as tar from 'tar';
-import { copyFile, mkdir, stat } from 'node:fs/promises';
+import { copyFile, mkdir, rm, stat } from 'node:fs/promises';
 
 // @ts-ignore build.mts runs as ESM even though the plugin tsconfig is CommonJS.
 const __filename = fileURLToPath(import.meta.url);
@@ -41,22 +41,22 @@ function currentGitInfo() {
 	try {
 		const branch = execSync('git rev-parse --abbrev-ref HEAD', { stdio: 'pipe' }).toString().trim();
 		const commit = execSync('git rev-parse HEAD', { stdio: 'pipe' }).toString().trim();
-		return `${branch}:${commit}`;
+		const dirty = execSync('git status --porcelain', { stdio: 'pipe' }).toString().trim();
+		return `${branch}:${commit}${dirty ? '+dirty' : ''}`;
 	} catch {
 		return '';
 	}
 }
 
 async function createPluginArchive(sourceDir: string, destPath: string) {
-	const distFiles = glob.sync(`${sourceDir}/**/*`, { nodir: true })
-		.map(f => f.substring(sourceDir.length + 1));
+	const distFiles = glob.sync('**/*', { cwd: sourceDir, nodir: true }).sort();
 
 	if (!distFiles.length) throw new Error('"dist" directory is empty — nothing to archive');
 	if (existsSync(destPath)) unlinkSync(destPath);
 	if (!existsSync(publishDir)) await mkdir(publishDir, { recursive: true });
 
 	tar.create(
-		{ strict: true, portable: true, file: destPath, cwd: sourceDir, sync: true },
+		{ strict: true, portable: true, file: destPath, cwd: sourceDir, sync: true, mtime: new Date(0) },
 		distFiles,
 	);
 	console.info(`Plugin archive created: ${destPath}`);
@@ -134,9 +134,14 @@ async function copyAssets() {
 			await copyFile(srcPath, destPath);
 		}
 	}
+
+	await copyFile(join(rootDir, 'LICENSE'), join(distDir, 'LICENSE'));
 }
 
 async function build() {
+	await rm(distDir, { recursive: true, force: true });
+	await rm(publishDir, { recursive: true, force: true });
+	await mkdir(distDir, { recursive: true });
 	await bundle();
 	await copyAssets();
 	await createPluginArchive(distDir, pluginArchiveFilePath);

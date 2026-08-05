@@ -248,7 +248,7 @@ Build the installable plugin archive:
 npm run dist
 ```
 
-The build writes the `.jpl` file to `publish/io.github.moritzf.slidev-integration.jpl`.
+The build writes the `.jpl` file to `publish/de.moritzf.slidev-integration.jpl`.
 
 For local testing with an isolated Joplin profile:
 

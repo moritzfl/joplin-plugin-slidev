@@ -2,7 +2,10 @@
   "name": "joplin-plugin-slidev",
   "version": "0.3.1",
   "scripts": {
-    "postinstall": "node scripts/sync-joplin-api.mjs",
+    "sync-api": "node scripts/sync-joplin-api.mjs",
+    "prepare": "npm run sync-api",
+    "prepack": "npm run sync-api && npm test && npm run tsc && npm run dist",
+    "verify-package": "node scripts/verify-package.mjs",
     "dist": "node build.mts build",
     "build-and-run": "bash scripts/build-and-run.sh",
     "build-and-debug": "bash scripts/build-and-debug.sh",
@@ -10,13 +13,17 @@
     "puppeteer:joplin": "node scripts/puppeteer-joplin.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "tsc": "tsc --noEmit"
+    "tsc": "tsc"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/moritzfl/joplin-plugin-slidev"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "npm@11.16.0",
   "keywords": [
     "joplin-plugin"
   ],
@@ -25,18 +32,17 @@
   ],
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
-    "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",
     "@types/markdown-it": "^14.1.2",
-    "@types/node": "^25.6.0",
-    "esbuild": "0.28.0",
-    "generator-joplin": "^3.5.1",
+    "@types/node": "^22.18.0",
+    "esbuild": "0.28.1",
+    "generator-joplin": "^3.7.2",
     "glob": "^13.0.6",
-    "markdown-it": "^14.1.1",
-    "puppeteer-core": "^24.42.0",
-    "tar": "^7.5.13",
+    "markdown-it": "^14.3.0",
+    "puppeteer-core": "^24.43.1",
+    "tar": "^7.5.22",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "js-yaml": "^4.3.1"
