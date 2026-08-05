@@ -17,6 +17,7 @@ import {
 	startSlidevServer,
 	stopSlidevServer,
 	SlidevServer,
+	setNpmPath,
 	updateSlidevCore,
 } from '../src/slideServer';
 
@@ -51,6 +52,7 @@ const createInstalledWorkspace = async (dataDir: string, slidevScript = 'setInte
 };
 
 afterEach(async () => {
+	setNpmPath('');
 	const closingServers = servers.splice(0);
 	for (const server of closingServers) stopSlidevServer(server);
 	await Promise.all(closingServers.map(server => server.closed));
@@ -110,10 +112,37 @@ describe('slideServer', () => {
 		await expect(access(first.workDir)).rejects.toThrow();
 	});
 
+	it('blocks package changes while preparing a presentation', async () => {
+		const dataDir = await makeTempDir();
+		await createInstalledWorkspace(dataDir);
+		setNpmPath(process.execPath);
+
+		const server = await startSlidevServer('# Locked', dataDir, 3030, undefined, async markdown => {
+			await expect(updateSlidevCore(dataDir, () => {})).rejects.toThrow('Close running Slidev presentations');
+			return markdown;
+		});
+		servers.push(server);
+	});
+
+	it('releases the workspace after presentation preparation fails', async () => {
+		const dataDir = await makeTempDir();
+		const workspaceDir = await createInstalledWorkspace(dataDir);
+		await writeFile(join(workspaceDir, 'install'), 'process.exit(0);');
+		setNpmPath(process.execPath);
+
+		await expect(startSlidevServer('# Broken', dataDir, 3030, undefined, async () => {
+			throw new Error('preprocessing failed');
+		})).rejects.toThrow('preprocessing failed');
+		await expect(updateSlidevCore(dataDir, () => {})).resolves.toBeUndefined();
+	});
+
 	it('reports a Slidev process that exits during startup', async () => {
 		const dataDir = await makeTempDir();
-		await createInstalledWorkspace(dataDir, 'process.exit(2);');
+		const workspaceDir = await createInstalledWorkspace(dataDir, 'process.exit(2);');
+		await writeFile(join(workspaceDir, 'install'), 'process.exit(0);');
+		setNpmPath(process.execPath);
 
 		await expect(startSlidevServer('# Broken', dataDir, 3030)).rejects.toThrow('exited with code 2 before startup');
+		await expect(updateSlidevCore(dataDir, () => {})).resolves.toBeUndefined();
 	});
 });

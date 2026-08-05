@@ -1,6 +1,6 @@
 import { spawn, spawnSync, ChildProcess } from 'child_process';
 import { writeFile, mkdir, readFile, unlink, access, readdir, mkdtemp, rename, rm } from 'fs/promises';
-import { existsSync, unlinkSync } from 'fs';
+import { existsSync, rmSync, unlinkSync } from 'fs';
 import { dirname, join, resolve, sep } from 'path';
 import * as net from 'net';
 
@@ -102,6 +102,40 @@ const removeManagedDeck = async (dataDir: string, workDir: string): Promise<void
 	await rm(resolvedWorkDir, { recursive: true, force: true });
 };
 
+const removeManagedDeckSync = (dataDir: string, workDir: string): boolean => {
+	const decksDir = resolve(dataDir, SLIDEV_WORK_DIR, 'decks');
+	const resolvedWorkDir = resolve(workDir);
+	if (dirname(resolvedWorkDir) !== decksDir) return true;
+	try {
+		rmSync(resolvedWorkDir, { recursive: true, force: true });
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+const processExists = (pid: number): boolean => {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === 'EPERM';
+	}
+};
+
+const killProcessGroupSync = (pid: number): boolean => {
+	try {
+		if (process.platform !== 'win32') {
+			process.kill(-pid, 'SIGKILL');
+			return true;
+		}
+		const result = spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' });
+		return result.status === 0 || !processExists(pid);
+	} catch {
+		return !processExists(pid);
+	}
+};
+
 /**
  * Returns true when the running process identified by `pid` still looks like
  * the Slidev child we spawned: its working directory matches `expectedWorkDir`
@@ -181,15 +215,13 @@ export const cleanupOrphanedServer = async (dataDir: string): Promise<void> => {
 			const { pid, workDir, cmd, marker } = meta;
 			if (!pid || isNaN(pid)) continue;
 
-			let processExists = true;
-			try {
-				process.kill(pid, 0);
-			} catch (error) {
-				processExists = (error as NodeJS.ErrnoException).code === 'EPERM';
-			}
-			if (!processExists) {
-				await unlink(join(dataDir, pidFile)).catch(() => {/* ignore */});
-				await removeManagedDeck(dataDir, workDir).catch(() => {/* ignore */});
+			if (!processExists(pid)) {
+				try {
+					await removeManagedDeck(dataDir, workDir);
+					await unlink(join(dataDir, pidFile)).catch(() => {/* ignore */});
+				} catch {
+					console.warn(`[Slidev] Retaining PID metadata ${pid} – deck cleanup failed`);
+				}
 				continue;
 			}
 
@@ -201,19 +233,18 @@ export const cleanupOrphanedServer = async (dataDir: string): Promise<void> => {
 				continue;
 			}
 
-			try {
-				if (process.platform !== 'win32') {
-					process.kill(-pid, 'SIGKILL');
-				} else {
-					spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' });
-				}
-				console.log(`[Slidev] Cleaned up orphaned server process group ${pid}`);
-			} catch {
-				// ESRCH = process already dead; either way we're fine.
+			if (!killProcessGroupSync(pid)) {
+				console.warn(`[Slidev] Retaining PID ${pid} – process termination failed`);
+				continue;
 			}
+			console.log(`[Slidev] Cleaned up orphaned server process group ${pid}`);
 
-			await unlink(join(dataDir, pidFile)).catch(() => {/* ignore */});
-			await removeManagedDeck(dataDir, workDir).catch(() => {/* ignore */});
+			try {
+				await removeManagedDeck(dataDir, workDir);
+				await unlink(join(dataDir, pidFile)).catch(() => {/* ignore */});
+			} catch {
+				console.warn(`[Slidev] Retaining PID metadata ${pid} – deck cleanup failed`);
+			}
 		}
 	} catch {
 		// Data dir or PID files do not exist → nothing to clean up.
@@ -228,17 +259,10 @@ const activeAuxiliaryProcesses = new Set<ChildProcess>();
 const closedProcesses = new WeakSet<ChildProcess>();
 let cleanupRegistered = false;
 
-const killProcessTreeSync = (processToKill: ChildProcess) => {
+const killProcessTreeSync = (processToKill: ChildProcess): boolean => {
 	const pid = processToKill.pid;
-	if (!pid || closedProcesses.has(processToKill)) return;
-	try {
-		if (process.platform !== 'win32') {
-			process.kill(-pid, 'SIGKILL');
-		} else {
-			// /T also terminates subprocesses launched by Slidev, npm, or Playwright.
-			spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' });
-		}
-	} catch { /* already dead */ }
+	if (!pid || closedProcesses.has(processToKill)) return true;
+	return killProcessGroupSync(pid);
 };
 
 const killServerSync = (server: SlidevServer) => killProcessTreeSync(server.process);
@@ -253,13 +277,16 @@ const trackAuxiliaryProcess = (child: ChildProcess): void => {
 
 /** Synchronous cleanup: called from 'exit' and therefore must stay synchronous. */
 const syncKillAll = (dataDir: string) => {
-	for (const srv of activeServers) {
-		killServerSync(srv);
-		removePidFileSync(dataDir, srv.process.pid);
+	for (const srv of [...activeServers]) {
+		if (killServerSync(srv)) {
+			if (removeManagedDeckSync(dataDir, srv.workDir)) removePidFileSync(dataDir, srv.process.pid);
+			else console.warn(`[Slidev] Retaining PID metadata ${srv.process.pid} – deck cleanup failed`);
+			activeServers.delete(srv);
+		}
 	}
-	activeServers.clear();
-	for (const child of activeAuxiliaryProcesses) killProcessTreeSync(child);
-	activeAuxiliaryProcesses.clear();
+	for (const child of [...activeAuxiliaryProcesses]) {
+		if (killProcessTreeSync(child)) activeAuxiliaryProcesses.delete(child);
+	}
 };
 
 /**
@@ -775,12 +802,11 @@ export const ensureSlidevWorkspace = (dataDir: string, emit: (line: string) => v
 const prepareSlideshowDir = async (
 	markdown: string,
 	dataDir: string,
+	workspaceDir: string,
 	emit: (line: string) => void,
 	preprocessMarkdown?: (md: string, workDir: string) => Promise<string>,
 	extraFiles?: Record<string, string>,
-): Promise<{ workDir: string; workspaceDir: string; slidevEntry: string }> => {
-	const workspaceDir = slidevWorkspaceDir(dataDir);
-	await ensureSlidevWorkspace(dataDir, emit);
+): Promise<{ workDir: string; slidevEntry: string }> => {
 	const decksDir = join(workspaceDir, 'decks');
 	await mkdir(decksDir, { recursive: true });
 	const workDir = await mkdtemp(join(decksDir, 'deck-'));
@@ -801,7 +827,6 @@ const prepareSlideshowDir = async (
 
 		return {
 			workDir,
-			workspaceDir,
 			slidevEntry: await resolvePackageBin(workspaceDir, '@slidev/cli', 'slidev'),
 		};
 	} catch (error) {
@@ -831,8 +856,17 @@ export const startSlidevServer = async (
 		onLog?.(redacted);
 	};
 
-	const { workDir, workspaceDir, slidevEntry } = await prepareSlideshowDir(markdown, dataDir, emit, preprocessMarkdown, extraFiles);
+	const workspaceDir = slidevWorkspaceDir(dataDir);
+	await ensureSlidevWorkspace(dataDir, emit);
 	const releaseWorkspaceUse = await acquireWorkspaceUse(workspaceDir);
+	let workDir: string;
+	let slidevEntry: string;
+	try {
+		({ workDir, slidevEntry } = await prepareSlideshowDir(markdown, dataDir, workspaceDir, emit, preprocessMarkdown, extraFiles));
+	} catch (error) {
+		await releaseWorkspaceUse();
+		throw error;
+	}
 
 	const cmd = process.execPath;
 	const args = [slidevEntry, 'slides.md', '--port', String(port), '--no-open'];
@@ -882,11 +916,13 @@ export const startSlidevServer = async (
 			proc.once('close', (code) => {
 				closedProcesses.add(proc);
 				activeServers.delete(server);
-				removePidFileSync(dataDir, proc.pid);
 				Promise.allSettled([
 					removeManagedDeck(dataDir, workDir),
 					releaseWorkspaceUse(),
-				]).finally(() => resolveClosed(code));
+				]).then(([deckCleanup]) => {
+					if (deckCleanup.status === 'fulfilled') removePidFileSync(dataDir, proc.pid);
+					else console.warn(`[Slidev] Retaining PID metadata ${proc.pid} – deck cleanup failed`);
+				}).finally(() => resolveClosed(code));
 			});
 		}),
 	};
@@ -921,18 +957,20 @@ export const startSlidevServer = async (
 			if (proc.exitCode !== null || proc.signalCode !== null) removePidFileSync(dataDir, proc.pid);
 		}
 	} catch (error) {
-		killServerSync(server);
-		activeServers.delete(server);
-		await removeManagedDeck(dataDir, workDir).catch(() => {});
+		if (killServerSync(server)) {
+			activeServers.delete(server);
+			await removeManagedDeck(dataDir, workDir).catch(() => {});
+		}
 		throw error;
 	}
 
 	const spawnError = await startupFailure;
 	if (spawnError) {
-		killServerSync(server);
-		activeServers.delete(server);
-		removePidFileSync(dataDir, proc.pid);
-		await removeManagedDeck(dataDir, workDir).catch(() => {});
+		if (killServerSync(server)) {
+			activeServers.delete(server);
+			removePidFileSync(dataDir, proc.pid);
+			await removeManagedDeck(dataDir, workDir).catch(() => {});
+		}
 		const isNotFound = (spawnError as NodeJS.ErrnoException).code === 'ENOENT';
 		const hint = isNotFound
 			? `\n\nThe local Slidev binary was not found. Try restarting Joplin or reinstalling the plugin dependencies.`
@@ -948,9 +986,9 @@ export const startSlidevServer = async (
 };
 
 export const stopSlidevServer = (server: SlidevServer): void => {
-	killServerSync(server);
-	activeServers.delete(server);
-	removePidFileSync(server.dataDir, server.process.pid);
+	if (killServerSync(server)) {
+		activeServers.delete(server);
+	} else console.error(`[Slidev] Could not stop server process ${server.process.pid}; it remains tracked for shutdown cleanup`);
 };
 
 export const exportSlidevDeck = async (
@@ -969,12 +1007,15 @@ export const exportSlidevDeck = async (
 		console.log('[Slidev]', redacted);
 		onLog?.(redacted);
 	};
-	const { workDir, workspaceDir, slidevEntry } = await prepareSlideshowDir(markdown, dataDir, emit, preprocessMarkdown, extraFiles);
-	let releaseWorkspaceUse: (() => Promise<void>) | undefined;
+	const workspaceDir = slidevWorkspaceDir(dataDir);
+	await ensureSlidevWorkspace(dataDir, emit);
+	await ensurePlaywrightChromium(workspaceDir, emit);
+	const releaseWorkspaceUse = await acquireWorkspaceUse(workspaceDir);
+	let workDir: string | undefined;
 	try {
-		await ensurePlaywrightChromium(workspaceDir, emit);
-		releaseWorkspaceUse = await acquireWorkspaceUse(workspaceDir);
-		const args = [slidevEntry, 'export', 'slides.md', '--format', format, '--output', outputPath];
+		const prepared = await prepareSlideshowDir(markdown, dataDir, workspaceDir, emit, preprocessMarkdown, extraFiles);
+		workDir = prepared.workDir;
+		const args = [prepared.slidevEntry, 'export', 'slides.md', '--format', format, '--output', outputPath];
 		emit(`Exporting: ${quoteForLog(process.execPath)} ${args.map(quoteForLog).join(' ')}`);
 
 		await new Promise<void>((resolveExport, reject) => {
@@ -1002,8 +1043,8 @@ export const exportSlidevDeck = async (
 		});
 	} finally {
 		await Promise.all([
-			removeManagedDeck(dataDir, workDir),
-			releaseWorkspaceUse?.(),
+			workDir ? removeManagedDeck(dataDir, workDir) : undefined,
+			releaseWorkspaceUse(),
 		]);
 	}
 
