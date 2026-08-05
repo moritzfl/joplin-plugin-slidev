@@ -5,7 +5,7 @@
     "sync-api": "node scripts/sync-joplin-api.mjs",
     "prepare": "npm run sync-api",
     "prepack": "npm run sync-api && npm test && npm run tsc && npm run dist",
-    "verify-package": "node scripts/verify-package.mjs",
+    "verify-package": "npm run dist && node scripts/verify-package.mjs",
     "dist": "node build.mts build",
     "build-and-run": "bash scripts/build-and-run.sh",
     "build-and-debug": "bash scripts/build-and-debug.sh",
