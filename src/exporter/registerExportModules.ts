@@ -226,6 +226,13 @@ const registerSlidevMarkdownBundleExportModule = async () => {
                 await writeFile(mdPath, processed, 'utf-8');
                 progress.log(`Written: slides.md`);
 
+                for (const [relativePath, content] of Object.entries(buildSlidevExtraFiles(settings))) {
+                    const outputPath = join(outputDir, relativePath);
+                    await mkdir(join(outputPath, '..'), { recursive: true });
+                    await writeFile(outputPath, content, 'utf-8');
+                }
+                progress.log('Written: Slidev support files');
+
                 await progress.done(outputDir);
             } catch (e) {
                 await progress.failed(e);

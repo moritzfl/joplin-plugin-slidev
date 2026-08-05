@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ComputedRef } from 'vue'
-import { inject, computed, watch } from 'vue'
+import { inject, computed, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 interface SlideRoute {
@@ -65,6 +65,11 @@ const stopMedia = () => {
 watch(() => route.fullPath, stopMedia)
 window.addEventListener('hashchange', stopMedia)
 window.addEventListener('popstate', stopMedia)
+
+onUnmounted(() => {
+  window.removeEventListener('hashchange', stopMedia)
+  window.removeEventListener('popstate', stopMedia)
+})
 
 </script>
 

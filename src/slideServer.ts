@@ -510,17 +510,22 @@ export const listInstalledSlidevPackages = async (dataDir: string, kind: 'theme'
 
 // Minimal package.json written into the work dir so Slidev can resolve themes
 // from a local node_modules rather than prompting to download them at runtime.
+export const SUPPORTED_SLIDEV_VERSION = '52.19.0';
+export const SUPPORTED_PLAYWRIGHT_VERSION = '1.62.1';
+
 const REQUIRED_WORKSPACE_DEPENDENCIES = {
-	'@slidev/cli': '52.19.0',
+	'@slidev/cli': SUPPORTED_SLIDEV_VERSION,
 	'@slidev/theme-default': '0.25.0',
 	'@slidev/theme-seriph': '0.25.0',
 };
-const PLAYWRIGHT_CHROMIUM_VERSION = '1.62.1';
 const NPM_PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/i;
 
 const assertNpmPackageName = (packageName: string): void => {
 	if (!NPM_PACKAGE_NAME_RE.test(packageName)) throw new Error(`Invalid npm package name: ${packageName}`);
 };
+
+export const isRequiredSlidevPackage = (packageName: string): boolean =>
+	Object.prototype.hasOwnProperty.call(REQUIRED_WORKSPACE_DEPENDENCIES, packageName);
 
 const resolvePackageBin = async (workspaceDir: string, packageName: string, binName: string): Promise<string> => {
 	const packageDir = join(workspaceDir, 'node_modules', ...packageName.split('/'));
@@ -639,7 +644,7 @@ const ensurePlaywrightChromium = async (workDir: string, emit: (line: string) =>
 	if (needsInstall) {
 		emit('Installing playwright-chromium for Slidev CLI export...');
 		emit('(This is required by Slidev export and may take a while once.)');
-		await runNpmInstallPackage(workDir, `playwright-chromium@${PLAYWRIGHT_CHROMIUM_VERSION}`, emit);
+		await runNpmInstallPackage(workDir, `playwright-chromium@${SUPPORTED_PLAYWRIGHT_VERSION}`, emit);
 	}
 	if (!await hasPlaywrightChromium(workDir)) {
 		emit('Installing the Chromium browser required by Slidev export...');
@@ -681,7 +686,7 @@ export const updateSlidevCore = (dataDir: string, emit: (line: string) => void):
 
 export const updatePlaywrightChromium = (dataDir: string, emit: (line: string) => void): Promise<void> => {
 	registerProcessCleanup(dataDir);
-	return runNpmInstallPackage(slidevWorkspaceDir(dataDir), `playwright-chromium@${PLAYWRIGHT_CHROMIUM_VERSION}`, emit);
+	return runNpmInstallPackage(slidevWorkspaceDir(dataDir), `playwright-chromium@${SUPPORTED_PLAYWRIGHT_VERSION}`, emit);
 };
 
 const workspaceSetupTasks = new Map<string, Promise<void>>();

@@ -7,7 +7,8 @@ import marketplaceTemplate from './marketplaceDialog.html';
 import installingTemplate from './installingDialog.html';
 import installCompleteTemplate from './installCompleteDialog.html';
 import installFailedTemplate from './installFailedDialog.html';
-import { ensureSlidevWorkspace, installSlidevPackage, updateSlidevCore, readInstalledSlidevVersion, listInstalledSlidevPackages, InstalledSlidevPackage, uninstallSlidevPackage, updatePlaywrightChromium, readInstalledPlaywrightVersion, NpmInstallConflictMode } from '../slideServer';
+import { ensureSlidevWorkspace, installSlidevPackage, updateSlidevCore, readInstalledSlidevVersion, listInstalledSlidevPackages, InstalledSlidevPackage, uninstallSlidevPackage, updatePlaywrightChromium, readInstalledPlaywrightVersion, NpmInstallConflictMode, isRequiredSlidevPackage, SUPPORTED_SLIDEV_VERSION, SUPPORTED_PLAYWRIGHT_VERSION } from '../slideServer';
+import { packageSelection } from './packageSelection';
 
 // electron is available at runtime inside Joplin (Electron app) but has no bundled types.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -70,6 +71,8 @@ interface MarketplaceState {
 }
 
 let handle: string | undefined;
+let packageDialogActive = false;
+let dialogGeneration = 0;
 
 const getHandle = async () => {
 	if (!handle) handle = await dialogs.create(dialogId);
@@ -239,21 +242,6 @@ const loadGithubStars = async (packages: NpmSearchObject[], packageMetadata: Map
 	return new Map(entries.filter((entry): entry is readonly [string, number] => entry !== null));
 };
 
-const fetchLatestPackageVersion = async (packageName: string): Promise<string | null> => {
-	try {
-		const response = await fetchWithTimeout(`https://registry.npmjs.org/${encodeURIComponent(packageName).replace(/%2F/g, '/')}/latest`);
-		if (!response.ok) return null;
-		const data = await response.json() as { version?: string };
-		return typeof data.version === 'string' ? data.version : null;
-	} catch {
-		return null;
-	}
-};
-
-const fetchLatestSlidevVersion = async (): Promise<string | null> => fetchLatestPackageVersion('@slidev/cli');
-
-const fetchLatestPlaywrightVersion = async (): Promise<string | null> => fetchLatestPackageVersion('playwright-chromium');
-
 const searchPackages = async (kind: PackageKind, query: string): Promise<NpmSearchObject[]> => {
 	const keyword = kind === 'theme' ? 'slidev-theme' : 'slidev-addon';
 	const text = query.trim()
@@ -285,7 +273,7 @@ const runtimeCardsHtml = (
 		? `Installed v${esc(installedPlaywrightVersion)}`
 		: 'Not installed yet';
 	return `<label class="card runtime-card" data-view="installed" data-search="slidev cli default theme runtime" title="Select Slidev runtime">
-		<input type="radio" name="packageName" value="__runtime_slidev" />
+		<input type="radio" name="packageName-installed" value="__runtime_slidev" />
 		<div class="card-inner">
 			<div class="icon">▶</div>
 			<div class="content">
@@ -298,14 +286,14 @@ const runtimeCardsHtml = (
 				</div>
 				<p>Updates the managed Slidev CLI and default theme used by presentations.</p>
 				<div class="meta">
-					${latestSlidevVersion ? `<span>Latest v${esc(latestSlidevVersion)}</span>` : ''}
+						${latestSlidevVersion ? `<span>Plugin-supported v${esc(latestSlidevVersion)}</span>` : ''}
 				</div>
 				<div class="card-actions"><span>Select, then use Install / Update Selected</span></div>
 			</div>
 		</div>
 	</label>
 	<label class="card runtime-card" data-view="installed" data-search="playwright chromium export browser runtime" title="Select Playwright Chromium">
-		<input type="radio" name="packageName" value="__runtime_playwright" />
+		<input type="radio" name="packageName-installed" value="__runtime_playwright" />
 		<div class="card-inner">
 			<div class="icon">▣</div>
 			<div class="content">
@@ -336,7 +324,7 @@ const installedCardsHtml = (installedPackages: Map<string, InstalledSlidevPackag
 		const label = installedPackageKindLabel(pkg.packageName);
 		const icon = label === 'Theme' ? '🎨' : label === 'Addon' ? '🧩' : '📦';
 		return `<label class="card" data-view="installed" data-search="${packageSearchText(pkg.packageName, label)}" title="Select ${esc(pkg.packageName)}">
-			<input type="radio" name="packageName" value="${esc(pkg.packageName)}"${index === 0 ? ' checked' : ''} />
+			<input type="radio" name="packageName-installed" value="${esc(pkg.packageName)}"${index === 0 ? ' checked' : ''} />
 			<div class="card-inner">
 				<div class="icon">${icon}</div>
 				<div class="content">
@@ -383,7 +371,7 @@ const packageCardsHtml = (
 			: `${weeklyDownloads}/week`;
 		const icon = view === 'theme' ? '🎨' : '🧩';
 		return `<label class="card" data-view="${view}" data-search="${packageSearchText(pkg.name, description, downloadLabel, published, updated)}" title="Select ${esc(pkg.name)}">
-			<input type="radio" name="packageName" value="${esc(pkg.name)}"${index === 0 ? ' checked' : ''} />
+			<input type="radio" name="packageName-${view}" value="${esc(pkg.name)}"${index === 0 ? ' checked' : ''} />
 			<div class="card-inner">
 				<div class="icon">${icon}</div>
 				<div class="content">
@@ -447,9 +435,9 @@ const marketplaceHtml = (
 		ADDON_CHECKED: activeView === 'addon' ? ' checked' : '',
 		INSTALLED_CHECKED: activeView === 'installed' ? ' checked' : '',
 		SLIDEV_STATUS: installedSlidevVersion ? `<span class="version-chip version-installed">v${esc(installedSlidevVersion)} installed</span>` : '<span class="version-none">workspace not set up yet</span>',
-		SLIDEV_UPDATE_STATUS: latestSlidevVersion && latestSlidevVersion !== installedSlidevVersion ? `<span class="version-chip version-available">v${esc(latestSlidevVersion)} available</span>` : latestSlidevVersion && latestSlidevVersion === installedSlidevVersion ? '<span class="version-uptodate">✓ up to date</span>' : '',
+		SLIDEV_UPDATE_STATUS: latestSlidevVersion && latestSlidevVersion !== installedSlidevVersion ? `<span class="version-chip version-available">v${esc(latestSlidevVersion)} supported</span>` : latestSlidevVersion && latestSlidevVersion === installedSlidevVersion ? '<span class="version-uptodate">✓ supported version</span>' : '',
 		PLAYWRIGHT_STATUS: installedPlaywrightVersion ? `<span class="version-chip version-installed">v${esc(installedPlaywrightVersion)} installed</span>` : '<span class="version-none">not installed yet</span>',
-		PLAYWRIGHT_UPDATE_STATUS: latestPlaywrightVersion && latestPlaywrightVersion !== installedPlaywrightVersion ? `<span class="version-chip version-available">v${esc(latestPlaywrightVersion)} available</span>` : latestPlaywrightVersion && latestPlaywrightVersion === installedPlaywrightVersion ? '<span class="version-uptodate">✓ up to date</span>' : '',
+		PLAYWRIGHT_UPDATE_STATUS: latestPlaywrightVersion && latestPlaywrightVersion !== installedPlaywrightVersion ? `<span class="version-chip version-available">v${esc(latestPlaywrightVersion)} supported</span>` : latestPlaywrightVersion && latestPlaywrightVersion === installedPlaywrightVersion ? '<span class="version-uptodate">✓ supported version</span>' : '',
 		THEME_COUNT: String(state.themes.length),
 		ADDON_COUNT: String(state.addons.length),
 		INSTALLED_COUNT: String(installedItemCount),
@@ -653,7 +641,7 @@ const refreshMarketplaceSearch = async (state: MarketplaceState, dataDir: string
 	};
 };
 
-export const showSlidevPackageDialog = async (dataDir: string) => {
+const showSlidevPackageDialogInternal = async (dataDir: string, generation: number) => {
 	const dlg = await getHandle();
 	await dialogs.setFitToContent(dlg, false);
 
@@ -680,16 +668,16 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 
 	installedSlidevVersion = await readInstalledSlidevVersion(dataDir);
 	let installedPlaywrightVersion = await readInstalledPlaywrightVersion(dataDir);
-	let latestSlidevVersion: string | null = null;
-	let latestPlaywrightVersion: string | null = null;
+	const latestSlidevVersion: string | null = SUPPORTED_SLIDEV_VERSION;
+	const latestPlaywrightVersion: string | null = SUPPORTED_PLAYWRIGHT_VERSION;
 	let state = loadingMarketplaceState(setupMessage ? `${setupMessage} Loading marketplace packages...` : 'Loading marketplace packages...');
 	let activeView: PackageKind | 'installed' = 'theme';
 
-	const renderCurrent = () => dialogs.setHtml(dlg, marketplaceHtml(state, activeView, installedSlidevVersion, installedPlaywrightVersion, latestSlidevVersion, latestPlaywrightVersion));
+	const renderCurrent = () => generation === dialogGeneration
+		? dialogs.setHtml(dlg, marketplaceHtml(state, activeView, installedSlidevVersion, installedPlaywrightVersion, latestSlidevVersion, latestPlaywrightVersion))
+		: Promise.resolve();
 
-	const initialLoad = Promise.all([fetchLatestSlidevVersion(), fetchLatestPlaywrightVersion(), loadMarketplaceState(dataDir)]).then(([slidevVersion, playwrightVersion, nextState]) => {
-		latestSlidevVersion = slidevVersion;
-		latestPlaywrightVersion = playwrightVersion;
+	const initialLoad = loadMarketplaceState(dataDir).then((nextState) => {
 		state = setupMessage ? { ...nextState, message: joinMessages(setupMessage, nextState.message) } : nextState;
 		renderCurrent().catch(() => {});
 	}).catch((e) => {
@@ -733,7 +721,10 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 			continue;
 		}
 
-		const packageName = formValue(result.formData, 'packageName');
+		const allowedPackages = activeView === 'installed'
+			? new Set(state.installedPackages.keys())
+			: new Set(state[activeView === 'theme' ? 'themes' : 'addons'].map(item => item.package.name));
+		const packageName = packageSelection(result.formData, activeView, allowedPackages);
 
 		if (result.id === 'open-website') {
 			if (!packageName) {
@@ -828,6 +819,10 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 				installedPlaywrightVersion = await readInstalledPlaywrightVersion(dataDir);
 				continue;
 			}
+			if (isRequiredSlidevPackage(packageName)) {
+				state = { ...state, message: `${packageName} is managed with the Slidev runtime. Select the Slidev runtime card to update it.` };
+				continue;
+			}
 
 			const installed = await installPackageWithConflictDialog(dlg, dataDir, packageName);
 			if (installed) {
@@ -839,7 +834,7 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 		}
 
 		if (result.id === 'update-all') {
-			const installedPackageNames = [...state.installedPackages.keys()];
+			const installedPackageNames = [...state.installedPackages.keys()].filter(packageName => !isRequiredSlidevPackage(packageName));
 			const totalUpdateCount = installedPackageNames.length + 2;
 			const displayName = `Slidev runtime, Playwright, and ${installedPackageNames.length} package${installedPackageNames.length === 1 ? '' : 's'}`;
 			const logs: string[] = [];
@@ -887,7 +882,7 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 				state = { ...state, message: 'Select an installed package card before uninstalling.' };
 				continue;
 			}
-			if (packageName === '__runtime_slidev' || packageName === '__runtime_playwright') {
+			if (packageName === '__runtime_slidev' || packageName === '__runtime_playwright' || isRequiredSlidevPackage(packageName)) {
 				state = { ...state, message: 'Runtime components cannot be uninstalled here. Use Install / Update Selected to update them.' };
 				continue;
 			}
@@ -916,5 +911,17 @@ export const showSlidevPackageDialog = async (dataDir: string) => {
 			state = { ...state, installedPackages: await allInstalledPackageMap(dataDir) };
 		}
 
+	}
+};
+
+export const showSlidevPackageDialog = async (dataDir: string) => {
+	if (packageDialogActive) return;
+	packageDialogActive = true;
+	const generation = ++dialogGeneration;
+	try {
+		await showSlidevPackageDialogInternal(dataDir, generation);
+	} finally {
+		if (dialogGeneration === generation) dialogGeneration++;
+		packageDialogActive = false;
 	}
 };

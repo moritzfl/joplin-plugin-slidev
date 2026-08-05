@@ -320,7 +320,7 @@ export const registerSettings = async (workspaceDir: string, installedThemes: In
 			advanced: true,
 			section: settingsSectionName,
 			label: 'Hide toolbar button',
-			description: 'Remove the "Start Slidev Presentation" button from the note toolbar. The command remains accessible via the View menu.',
+			description: 'Remove the "Start Slidev Presentation" button from the note toolbar. The command remains accessible via the View menu. Requires a Joplin restart.',
 			type: SettingItemType.Bool,
 			storage: SettingStorage.File,
 			value: false,
@@ -330,7 +330,7 @@ export const registerSettings = async (workspaceDir: string, installedThemes: In
 			advanced: true,
 			section: settingsSectionName,
 			label: 'Disable frontmatter renderer',
-			description: 'By default the plugin hides Slidev YAML frontmatter blocks (--- … ---) from Joplin\'s note preview. Enable this if the frontmatter renderer conflicts with another plugin that also processes frontmatter.',
+			description: 'By default the plugin hides Slidev YAML frontmatter blocks (--- … ---) from Joplin\'s note preview. Enable this if the frontmatter renderer conflicts with another plugin that also processes frontmatter. Requires a Joplin restart.',
 			type: SettingItemType.Bool,
 			storage: SettingStorage.File,
 			value: false,
@@ -389,13 +389,15 @@ export const registerSettings = async (workspaceDir: string, installedThemes: In
 	await joplin.settings.setValue(workspacePathKey, workspaceDir);
 
 	try {
-		await joplin.settings.registerSetting(openSlidevWorkspaceKey, {
-			public: true,
-			section: settingsSectionName,
-			label: 'Open Slidev workspace',
-			description: 'Open the local Slidev workspace in your file manager.',
-			type: SettingItemType.Button,
-			value: '',
+		await joplin.settings.registerSettings({
+			[openSlidevWorkspaceKey]: {
+				public: true,
+				section: settingsSectionName,
+				label: 'Open Slidev workspace',
+				description: 'Open the local Slidev workspace in your file manager.',
+				type: SettingItemType.Button,
+				value: '',
+			},
 		});
 	} catch (e) {
 		console.warn('[Slidev] SettingItemType.Button is not available in this Joplin version:', e);

@@ -204,6 +204,7 @@ export const showSlidevPresentation = async (
 					(line) => {
 						if (cancelled) return;
 						logLines.push(`[${ts()}]  ${line}`);
+						if (logLines.length > MAX_LOG_LINES) logLines.splice(0, logLines.length - MAX_LOG_LINES);
 						const tunnelMatch = line.match(/remote via tunnel\s*>\s*(https?:\/\/\S+)/);
 						if (tunnelMatch) {
 							tunnelEntryUrl = tunnelMatch[1];

@@ -3,6 +3,16 @@
 // per-slide frontmatter anywhere in the note.
 
 import { isSlidevMatterClosingLine, isSlidevMatterOpeningLine } from './slidevMatter';
+import * as yaml from 'js-yaml';
+
+const isYamlMapping = (raw: string): boolean => {
+	try {
+		const data = yaml.load(raw);
+		return Boolean(data && typeof data === 'object' && !Array.isArray(data));
+	} catch {
+		return false;
+	}
+};
 
 export default function (_context: unknown) {
 	return {
@@ -34,6 +44,8 @@ export default function (_context: unknown) {
 						}
 					}
 					if (closingLine < 0) return false;
+					const rawMatter = state.getLines(bodyStart, closingLine, 0, false);
+					if (!isYamlMapping(rawMatter)) return false;
 					if (silent) return true;
 
 					const token = state.push('slidev_frontmatter', '', 0);

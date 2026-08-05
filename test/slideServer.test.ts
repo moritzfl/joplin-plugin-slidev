@@ -12,6 +12,7 @@ import {
 	ensureSlidevWorkspace,
 	buildNodeChildEnv,
 	findAvailablePort,
+	isRequiredSlidevPackage,
 	slidevWorkspaceDir,
 	startSlidevServer,
 	stopSlidevServer,
@@ -58,6 +59,11 @@ afterEach(async () => {
 describe('slideServer', () => {
 	it('runs Node CLIs through Electron in Node mode', () => {
 		expect(buildNodeChildEnv(true).ELECTRON_RUN_AS_NODE).toBe('1');
+	});
+
+	it('identifies runtime-managed packages', () => {
+		expect(isRequiredSlidevPackage('@slidev/theme-default')).toBe(true);
+		expect(isRequiredSlidevPackage('slidev-addon-existing')).toBe(false);
 	});
 
 	it('rejects ports outside the valid TCP range', async () => {
