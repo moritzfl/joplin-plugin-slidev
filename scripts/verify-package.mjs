@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -29,8 +29,9 @@ try {
 
 	const tarball = join(tempDir, packed.filename);
 	const installDir = join(tempDir, 'install');
+	await mkdir(installDir);
 	const install = spawnSync(process.execPath, [npmCli, 'install', '--prefix', installDir, tarball, '--no-audit', '--no-fund'], {
-		cwd: rootDir,
+		cwd: installDir,
 		encoding: 'utf-8',
 	});
 	if (install.status !== 0) throw new Error(install.stderr || install.stdout || 'packed package installation failed');
