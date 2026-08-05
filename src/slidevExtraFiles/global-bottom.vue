@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { ComputedRef } from 'vue'
 import { inject, computed, onUnmounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
 
 interface SlideRoute {
   no: number
@@ -55,14 +54,13 @@ const numberClass = computed(() => {
 // lifetime of the presentation, whereas a <script setup> block injected
 // into slides.md is part of slide 1's component and gets unmounted when
 // the user navigates away.
-const route = useRoute()
 const stopMedia = () => {
   for (const el of document.querySelectorAll<HTMLMediaElement>('audio, video')) {
     el.pause()
     el.currentTime = 0
   }
 }
-watch(() => route.fullPath, stopMedia)
+watch(() => slidevCtx.nav.currentPage.value, stopMedia)
 window.addEventListener('hashchange', stopMedia)
 window.addEventListener('popstate', stopMedia)
 

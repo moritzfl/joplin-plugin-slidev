@@ -1,3 +1,5 @@
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/slidevExtraFiles/styles-index.css', () => ({ default: '' }));
@@ -29,5 +31,12 @@ describe('buildSlidevExtraFiles', () => {
 		const files = buildSlidevExtraFiles({ remoteTunnel: true, presenterControlledNavigation: false });
 
 		expect(files['vite.config.ts']).toContain("allowedHosts: ['trycloudflare.com', '.trycloudflare.com']");
+	});
+
+	it('uses the injected Slidev navigation state without importing transitive router packages', async () => {
+		const source = await readFile(join(process.cwd(), 'src', 'slidevExtraFiles', 'global-bottom.vue'), 'utf-8');
+
+		expect(source).toContain('slidevCtx.nav.currentPage.value');
+		expect(source).not.toContain("from 'vue-router'");
 	});
 });
