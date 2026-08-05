@@ -226,14 +226,14 @@ export const showSlidevPresentation = async (
 
 				// Any Slidev process exit while the dialog is open is a failure —
 				// whether it crashed before ready or after.
-				server.process.once('close', (code) => {
+				server.closed.then((code) => {
 					if (cancelled) return;
 					logLines.push(`[${ts()}]  Process exited with code ${code}.`);
 					serverReady = false;
 					serverFailed = true;
 					scheduleHtmlUpdate();
 					dialogs.setButtons(dlg, [{ id: 'cancel', title: 'Close' }]).catch(() => {});
-				});
+				}).catch(() => {});
 
 				waitForServerReady(port, 60000).then((ready) => {
 					if (ready) {

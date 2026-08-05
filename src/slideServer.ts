@@ -1,15 +1,15 @@
 import { spawn, spawnSync, ChildProcess } from 'child_process';
-import { writeFile, mkdir, readFile, unlink, access, readdir } from 'fs/promises';
-import { unlinkSync } from 'fs';
-import { join } from 'path';
+import { writeFile, mkdir, readFile, unlink, access, readdir, mkdtemp, rename, rm } from 'fs/promises';
+import { existsSync, unlinkSync } from 'fs';
+import { dirname, join, resolve, sep } from 'path';
 import * as net from 'net';
-import { EXTRA_FILE_PATHS } from './slidevExtraFiles';
 
 export interface SlidevServer {
 	process: ChildProcess;
 	port: number;
 	workDir: string;
 	dataDir: string;
+	closed: Promise<number | null>;
 }
 
 export interface SlidevRemoteOptions {
@@ -42,10 +42,14 @@ const isPortAvailable = (port: number): Promise<boolean> =>
 	});
 
 export const findAvailablePort = async (startPort: number): Promise<number> => {
-	for (let port = startPort; port <= startPort + 100; port++) {
+	if (!Number.isInteger(startPort) || startPort < 1 || startPort > 65535) {
+		throw new Error(`Invalid Slidev port: ${startPort}`);
+	}
+	const endPort = Math.min(startPort + 100, 65535);
+	for (let port = startPort; port <= endPort; port++) {
 		if (await isPortAvailable(port)) return port;
 	}
-	throw new Error(`No free port in range ${startPort}–${startPort + 100}`);
+	throw new Error(`No free port in range ${startPort}–${endPort}`);
 };
 
 export const waitForServerReady = (port: number, timeoutMs = 60000): Promise<boolean> =>
@@ -70,6 +74,7 @@ export const waitForServerReady = (port: number, timeoutMs = 60000): Promise<boo
 
 const PID_FILE_PREFIX = 'slidev-server-';
 const PID_FILE_SUFFIX = '.pid';
+const SLIDEV_WORK_DIR = 'slidev-workspace';
 
 const pidFileName = (pid: number) => `${PID_FILE_PREFIX}${pid}${PID_FILE_SUFFIX}`;
 
@@ -77,10 +82,11 @@ interface PidFileMeta {
 	pid: number;
 	workDir: string;
 	cmd: string;
+	marker?: string;
 }
 
-const writePidFile = async (dataDir: string, pid: number, workDir: string, cmd: string) => {
-	const meta: PidFileMeta = { pid, workDir, cmd };
+const writePidFile = async (dataDir: string, pid: number, workDir: string, cmd: string, marker: string) => {
+	const meta: PidFileMeta = { pid, workDir, cmd, marker };
 	await writeFile(join(dataDir, pidFileName(pid)), JSON.stringify(meta), 'utf-8');
 };
 
@@ -89,23 +95,31 @@ const removePidFileSync = (dataDir: string, pid: number | undefined) => {
 	try { unlinkSync(join(dataDir, pidFileName(pid))); } catch { /* already gone */ }
 };
 
+const removeManagedDeck = async (dataDir: string, workDir: string): Promise<void> => {
+	const decksDir = resolve(dataDir, SLIDEV_WORK_DIR, 'decks');
+	const resolvedWorkDir = resolve(workDir);
+	if (dirname(resolvedWorkDir) !== decksDir) return;
+	await rm(resolvedWorkDir, { recursive: true, force: true });
+};
+
 /**
  * Returns true when the running process identified by `pid` still looks like
  * the Slidev child we spawned: its working directory matches `expectedWorkDir`
  * and its command path contains `expectedCmd`.  On any error we return false
  * (conservative: don't kill an unknown process).
  */
-const pidBelongsToPlugin = (pid: number, expectedWorkDir: string, expectedCmd: string): boolean => {
+const pidBelongsToPlugin = (pid: number, expectedWorkDir: string, expectedCmd: string, expectedMarker?: string): boolean => {
 	try {
 		if (process.platform === 'linux') {
 			// /proc/<pid>/cwd is a symlink to the process's working directory.
 			const { readlinkSync } = require('fs') as typeof import('fs');
 			const cwd = readlinkSync(`/proc/${pid}/cwd`);
 			if (cwd !== expectedWorkDir) return false;
-			// /proc/<pid>/cmdline is NUL-separated; first token is the executable.
+			// /proc/<pid>/cmdline is NUL-separated and includes the Node script path.
 			const { readFileSync } = require('fs') as typeof import('fs');
-			const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf-8').split('\0')[0];
-			return cmdline.includes(expectedCmd);
+			const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf-8').split('\0').filter(Boolean);
+			return cmdline.some(arg => arg === expectedCmd || arg.includes(expectedCmd))
+				&& (!expectedMarker || cmdline.some(arg => arg === expectedMarker || arg.includes(expectedMarker)));
 		} else if (process.platform === 'darwin') {
 			// Detached children should be process-group leaders, which lets us
 			// safely kill the whole group with -pid after verifying the cwd.
@@ -120,15 +134,26 @@ const pidBelongsToPlugin = (pid: number, expectedWorkDir: string, expectedCmd: s
 			if (!cwd) return false;
 
 			const { realpathSync } = require('fs') as typeof import('fs');
-			return realpathSync(cwd) === realpathSync(expectedWorkDir);
+			if (realpathSync(cwd) !== realpathSync(expectedWorkDir)) return false;
+			if (!expectedMarker) return true;
+			const commandResult = spawnSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf-8' });
+			return commandResult.status === 0 && commandResult.stdout.includes(expectedMarker);
 		} else {
-			// Windows: use wmic to query the executable path.
+			// Windows: query both executable and command line. WMIC is absent on
+			// current Windows releases, while PowerShell's CIM API remains available.
 			const result = spawnSync(
-				'wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'ExecutablePath'],
+				'powershell.exe', [
+					'-NoProfile',
+					'-NonInteractive',
+					'-Command',
+					`$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"; if ($p) { $p | Select-Object ExecutablePath,CommandLine | ConvertTo-Json -Compress }`,
+				],
 				{ encoding: 'utf-8' },
 			);
 			if (result.status !== 0) return false;
-			return result.stdout.includes(expectedCmd);
+			const processInfo = JSON.parse(result.stdout) as { ExecutablePath?: string; CommandLine?: string };
+			return processInfo.ExecutablePath?.toLowerCase() === expectedCmd.toLowerCase()
+				&& (!expectedMarker || Boolean(processInfo.CommandLine?.toLowerCase().includes(expectedMarker.toLowerCase())));
 		}
 	} catch {
 		return false;
@@ -153,15 +178,26 @@ export const cleanupOrphanedServer = async (dataDir: string): Promise<void> => {
 				await unlink(join(dataDir, pidFile)).catch(() => {/* ignore */});
 				continue;
 			}
-			const { pid, workDir, cmd } = meta;
+			const { pid, workDir, cmd, marker } = meta;
 			if (!pid || isNaN(pid)) continue;
+
+			let processExists = true;
+			try {
+				process.kill(pid, 0);
+			} catch (error) {
+				processExists = (error as NodeJS.ErrnoException).code === 'EPERM';
+			}
+			if (!processExists) {
+				await unlink(join(dataDir, pidFile)).catch(() => {/* ignore */});
+				await removeManagedDeck(dataDir, workDir).catch(() => {/* ignore */});
+				continue;
+			}
 
 			// Verify the live process still matches before killing it.  This
 			// prevents accidentally killing an unrelated process that inherited
 			// the same PID after a reboot or rapid process cycling.
-			if (!pidBelongsToPlugin(pid, workDir, cmd)) {
-				console.log(`[Slidev] Skipping PID ${pid} – process no longer matches plugin metadata`);
-				await unlink(join(dataDir, pidFile)).catch(() => {/* ignore */});
+			if (!pidBelongsToPlugin(pid, workDir, cmd, marker)) {
+				console.log(`[Slidev] Retaining PID ${pid} – process ownership could not be verified`);
 				continue;
 			}
 
@@ -177,6 +213,7 @@ export const cleanupOrphanedServer = async (dataDir: string): Promise<void> => {
 			}
 
 			await unlink(join(dataDir, pidFile)).catch(() => {/* ignore */});
+			await removeManagedDeck(dataDir, workDir).catch(() => {/* ignore */});
 		}
 	} catch {
 		// Data dir or PID files do not exist → nothing to clean up.
@@ -187,36 +224,46 @@ export const cleanupOrphanedServer = async (dataDir: string): Promise<void> => {
 
 // All currently running servers tracked at module level so exit handlers can reach them.
 const activeServers = new Set<SlidevServer>();
+const activeAuxiliaryProcesses = new Set<ChildProcess>();
+const closedProcesses = new WeakSet<ChildProcess>();
 let cleanupRegistered = false;
 
-const killServerSync = (server: SlidevServer) => {
-	const pid = server.process.pid;
-	if (!pid) return;
+const killProcessTreeSync = (processToKill: ChildProcess) => {
+	const pid = processToKill.pid;
+	if (!pid || closedProcesses.has(processToKill)) return;
 	try {
 		if (process.platform !== 'win32') {
 			process.kill(-pid, 'SIGKILL');
 		} else {
-			// On Windows with shell:true, spawn creates cmd.exe → node.exe (slidev).
-			// Killing only the shell leaves node.exe running and holding the port.
-			// /T kills the entire process tree rooted at pid.
+			// /T also terminates subprocesses launched by Slidev, npm, or Playwright.
 			spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore' });
 		}
 	} catch { /* already dead */ }
 };
 
-/** Synchronous cleanup: called from 'exit' (must be sync) and signal handlers. */
+const killServerSync = (server: SlidevServer) => killProcessTreeSync(server.process);
+
+const trackAuxiliaryProcess = (child: ChildProcess): void => {
+	activeAuxiliaryProcesses.add(child);
+	child.once('close', () => {
+		closedProcesses.add(child);
+		activeAuxiliaryProcesses.delete(child);
+	});
+};
+
+/** Synchronous cleanup: called from 'exit' and therefore must stay synchronous. */
 const syncKillAll = (dataDir: string) => {
 	for (const srv of activeServers) {
 		killServerSync(srv);
 		removePidFileSync(dataDir, srv.process.pid);
 	}
 	activeServers.clear();
+	for (const child of activeAuxiliaryProcesses) killProcessTreeSync(child);
+	activeAuxiliaryProcesses.clear();
 };
 
 /**
- * Register process-level exit and signal hooks the first time a server is started.
- * This ensures Slidev is always torn down when Joplin exits — even on SIGTERM/SIGINT,
- * while still allowing Joplin's own handlers to run afterwards.
+ * Register process cleanup without taking signal handling away from Joplin.
  */
 const registerProcessCleanup = (dataDir: string) => {
 	if (cleanupRegistered) return;
@@ -225,13 +272,13 @@ const registerProcessCleanup = (dataDir: string) => {
 	// 'exit' fires on clean process.exit() calls — must be synchronous.
 	process.on('exit', () => syncKillAll(dataDir));
 
-	// For OS signals: clean up, remove ourselves, then re-raise so Node's
-	// default behaviour (and any other handlers) can still run.
 	for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
 		const handler = () => {
 			syncKillAll(dataDir);
-			process.removeListener(sig, handler);
-			process.kill(process.pid, sig); // re-raise → default termination
+			if (process.listenerCount(sig) === 1) {
+				process.removeListener(sig, handler);
+				process.kill(process.pid, sig);
+			}
 		};
 		process.on(sig, handler);
 	}
@@ -250,13 +297,23 @@ const resolveNpmCmd = (): string => {
 	return process.platform === 'win32' ? 'npm.cmd' : 'npm';
 };
 
+const resolveNpmInvocation = (args: string[]): { command: string; args: string[]; shell: boolean } => {
+	const npmCommand = resolveNpmCmd();
+	if (process.platform !== 'win32') return { command: npmCommand, args, shell: false };
+
+	let npmCmdPath = npmCommand;
+	if (!npmCmdPath.includes('\\') && !npmCmdPath.includes('/')) {
+		const whereResult = spawnSync('where.exe', [npmCmdPath], { encoding: 'utf-8' });
+		const resolvedPath = whereResult.status === 0 ? whereResult.stdout.split(/\r?\n/).find(Boolean) : undefined;
+		if (resolvedPath) npmCmdPath = resolvedPath;
+	}
+	const npmCliPath = resolve(dirname(npmCmdPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+	if (existsSync(npmCliPath)) return { command: process.execPath, args: [npmCliPath, ...args], shell: false };
+	return { command: npmCommand, args, shell: true };
+};
+
 const quoteForLog = (arg: string): string =>
 	/[\s&,]/.test(arg) ? JSON.stringify(arg) : arg;
-
-const quoteForWindowsShell = (arg: string): string =>
-	process.platform === 'win32' && /[\s&|<>^()]/.test(arg)
-		? `"${arg.replace(/"/g, '\\"')}"`
-		: arg;
 
 const redactSensitiveLogLine = (line: string): string =>
 	line.replace(/([?&]password=)[^&\s/]+/g, '$1*****');
@@ -307,9 +364,12 @@ export const buildChildEnv = (): NodeJS.ProcessEnv => {
 	};
 };
 
-// ---------- version helpers ----------
+export const buildNodeChildEnv = (isElectron = Boolean(process.versions.electron)): NodeJS.ProcessEnv => ({
+	...buildChildEnv(),
+	...(isElectron ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+});
 
-const SLIDEV_WORK_DIR = 'slidev-workspace';
+// ---------- version helpers ----------
 
 export const slidevWorkspaceDir = (dataDir: string): string => join(dataDir, SLIDEV_WORK_DIR);
 
@@ -450,15 +510,89 @@ export const listInstalledSlidevPackages = async (dataDir: string, kind: 'theme'
 
 // Minimal package.json written into the work dir so Slidev can resolve themes
 // from a local node_modules rather than prompting to download them at runtime.
-const WORK_DIR_PACKAGE_JSON = JSON.stringify({
-	name: 'joplin-slidev-presentation',
-	private: true,
-	dependencies: {
-		'@slidev/cli': 'latest',
-		'@slidev/theme-default': 'latest',
-		'@slidev/theme-seriph': 'latest',
-	},
-}, null, 2);
+const REQUIRED_WORKSPACE_DEPENDENCIES = {
+	'@slidev/cli': '52.19.0',
+	'@slidev/theme-default': '0.25.0',
+	'@slidev/theme-seriph': '0.25.0',
+};
+const PLAYWRIGHT_CHROMIUM_VERSION = '1.62.1';
+const NPM_PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/i;
+
+const assertNpmPackageName = (packageName: string): void => {
+	if (!NPM_PACKAGE_NAME_RE.test(packageName)) throw new Error(`Invalid npm package name: ${packageName}`);
+};
+
+const resolvePackageBin = async (workspaceDir: string, packageName: string, binName: string): Promise<string> => {
+	const packageDir = join(workspaceDir, 'node_modules', ...packageName.split('/'));
+	const pkg = JSON.parse(await readFile(join(packageDir, 'package.json'), 'utf-8')) as {
+		bin?: string | Record<string, string>;
+	};
+	const relativeBin = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.[binName];
+	if (!relativeBin) throw new Error(`${packageName} does not define the ${binName} executable`);
+	const entryPath = resolve(packageDir, relativeBin);
+	if (dirname(entryPath) !== packageDir && !entryPath.startsWith(`${packageDir}${sep}`)) {
+		throw new Error(`${packageName} executable escapes its package directory`);
+	}
+	await access(entryPath);
+	return entryPath;
+};
+
+const writeWorkspacePackageJson = async (workDir: string): Promise<void> => {
+	const packagePath = join(workDir, 'package.json');
+	let existing: Record<string, any> = {};
+	try {
+		const parsed = JSON.parse(await readFile(packagePath, 'utf-8'));
+		if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) existing = parsed;
+	} catch {
+		// Missing or invalid package metadata is rebuilt below.
+	}
+	const packageJson = {
+		...existing,
+		name: typeof existing.name === 'string' ? existing.name : 'joplin-slidev-presentation',
+		private: true,
+		dependencies: {
+			...(existing.dependencies && typeof existing.dependencies === 'object' ? existing.dependencies : {}),
+			...REQUIRED_WORKSPACE_DEPENDENCIES,
+		},
+	};
+	const temporaryPath = `${packagePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+	await writeFile(temporaryPath, JSON.stringify(packageJson, null, 2), 'utf-8');
+	await rename(temporaryPath, packagePath);
+};
+
+const runStreamingProcess = (
+	command: string,
+	args: string[],
+	workDir: string,
+	shell: boolean,
+	operation: string,
+	emit: (line: string) => void,
+): Promise<void> => new Promise((resolveRun, reject) => {
+	const proc = spawn(command, args, {
+		cwd: workDir,
+		env: buildNodeChildEnv(),
+		shell,
+		detached: process.platform !== 'win32',
+		stdio: ['ignore', 'pipe', 'pipe'],
+	});
+	trackAuxiliaryProcess(proc);
+	const onData = (d: Buffer) =>
+		d.toString().split('\n').map(line => line.trimEnd()).filter(Boolean).forEach(emit);
+	proc.stdout?.on('data', onData);
+	proc.stderr?.on('data', onData);
+	proc.on('error', reject);
+	proc.on('close', code => code === 0 ? resolveRun() : reject(new Error(`${operation} exited with code ${code}`)));
+});
+
+const runNpmCommand = (
+	workDir: string,
+	args: string[],
+	operation: string,
+	emit: (line: string) => void,
+): Promise<void> => {
+	const invocation = resolveNpmInvocation(args);
+	return runStreamingProcess(invocation.command, invocation.args, workDir, invocation.shell, operation, emit);
+};
 
 const runNpmInstallPackage = (
 	workDir: string,
@@ -470,22 +604,7 @@ const runNpmInstallPackage = (
 	const conflictArgs = conflictMode === 'legacy-peer-deps'
 		? ['--legacy-peer-deps']
 		: conflictMode === 'force' ? ['--force'] : [];
-	return new Promise((resolve, reject) => {
-		const proc = spawn(resolveNpmCmd(), ['install', ...pkgs, '--no-audit', '--no-fund', ...conflictArgs], {
-			cwd: workDir,
-			env: buildChildEnv(),
-			shell: process.platform === 'win32',
-			stdio: ['ignore', 'pipe', 'pipe'],
-		});
-		const onData = (d: Buffer) =>
-			d.toString().split('\n').map(l => l.trimEnd()).filter(Boolean).forEach(emit);
-		proc.stdout?.on('data', onData);
-		proc.stderr?.on('data', onData);
-		proc.on('error', reject);
-		proc.on('close', (code) =>
-			code === 0 ? resolve() : reject(new Error(`npm install exited with code ${code}`)),
-		);
-	});
+	return runNpmCommand(workDir, ['install', ...pkgs, '--no-audit', '--no-fund', ...conflictArgs], 'npm install', emit);
 };
 
 const runNpmUninstallPackage = (
@@ -493,32 +612,41 @@ const runNpmUninstallPackage = (
 	packageName: string,
 	emit: (line: string) => void,
 ): Promise<void> => {
-	return new Promise((resolve, reject) => {
-		const proc = spawn(resolveNpmCmd(), ['uninstall', packageName, '--no-audit', '--no-fund'], {
-			cwd: workDir,
-			env: buildChildEnv(),
-			shell: process.platform === 'win32',
-			stdio: ['ignore', 'pipe', 'pipe'],
-		});
-		const onData = (d: Buffer) =>
-			d.toString().split('\n').map(l => l.trimEnd()).filter(Boolean).forEach(emit);
-		proc.stdout?.on('data', onData);
-		proc.stderr?.on('data', onData);
-		proc.on('error', reject);
-		proc.on('close', (code) =>
-			code === 0 ? resolve() : reject(new Error(`npm uninstall exited with code ${code}`)),
-		);
-	});
+	return runNpmCommand(workDir, ['uninstall', packageName, '--no-audit', '--no-fund'], 'npm uninstall', emit);
 };
+
+const hasPlaywrightChromium = async (workDir: string): Promise<boolean> => {
+	try {
+		const packageDir = join(workDir, 'node_modules', 'playwright-chromium');
+		const playwright = require(packageDir) as { chromium?: { executablePath: () => string } };
+		const executablePath = playwright.chromium?.executablePath();
+		return Boolean(executablePath && await access(executablePath).then(() => true).catch(() => false));
+	} catch {
+		return false;
+	}
+};
+
+const runNodePackageBin = (
+	workDir: string,
+	entryPath: string,
+	args: string[],
+	emit: (line: string) => void,
+): Promise<void> => runStreamingProcess(process.execPath, [entryPath, ...args], workDir, false, 'Process', emit);
 
 const ensurePlaywrightChromium = async (workDir: string, emit: (line: string) => void) => {
 	const packagePath = join(workDir, 'node_modules', 'playwright-chromium', 'package.json');
 	const needsInstall = await access(packagePath).then(() => false).catch(() => true);
-	if (!needsInstall) return;
-	emit('Installing playwright-chromium for Slidev CLI export...');
-	emit('(This is required by Slidev export and may take a while once.)');
-	await runNpmInstallPackage(workDir, 'playwright-chromium', emit);
-	emit('playwright-chromium install complete.');
+	if (needsInstall) {
+		emit('Installing playwright-chromium for Slidev CLI export...');
+		emit('(This is required by Slidev export and may take a while once.)');
+		await runNpmInstallPackage(workDir, `playwright-chromium@${PLAYWRIGHT_CHROMIUM_VERSION}`, emit);
+	}
+	if (!await hasPlaywrightChromium(workDir)) {
+		emit('Installing the Chromium browser required by Slidev export...');
+		const playwrightEntry = await resolvePackageBin(workDir, 'playwright-chromium', 'playwright');
+		await runNodePackageBin(workDir, playwrightEntry, ['install', 'chromium'], emit);
+	}
+	emit('Playwright Chromium is ready.');
 };
 
 export const installSlidevPackage = (
@@ -527,6 +655,8 @@ export const installSlidevPackage = (
 	emit: (line: string) => void,
 	conflictMode?: NpmInstallConflictMode,
 ): Promise<void> => {
+	registerProcessCleanup(dataDir);
+	assertNpmPackageName(packageName);
 	return runNpmInstallPackage(slidevWorkspaceDir(dataDir), `${packageName}@latest`, emit, conflictMode);
 };
 
@@ -535,30 +665,64 @@ export const uninstallSlidevPackage = (
 	packageName: string,
 	emit: (line: string) => void,
 ): Promise<void> => {
+	registerProcessCleanup(dataDir);
+	assertNpmPackageName(packageName);
 	return runNpmUninstallPackage(slidevWorkspaceDir(dataDir), packageName, emit);
 };
 
-export const updateSlidevCore = (dataDir: string, emit: (line: string) => void): Promise<void> =>
-	runNpmInstallPackage(
+export const updateSlidevCore = (dataDir: string, emit: (line: string) => void): Promise<void> => {
+	registerProcessCleanup(dataDir);
+	return runNpmInstallPackage(
 		slidevWorkspaceDir(dataDir),
-		['@slidev/cli@latest', '@slidev/theme-default@latest'],
+		Object.entries(REQUIRED_WORKSPACE_DEPENDENCIES).map(([name, version]) => `${name}@${version}`),
 		emit,
 	);
+};
 
-export const updatePlaywrightChromium = (dataDir: string, emit: (line: string) => void): Promise<void> =>
-	runNpmInstallPackage(slidevWorkspaceDir(dataDir), 'playwright-chromium@latest', emit);
+export const updatePlaywrightChromium = (dataDir: string, emit: (line: string) => void): Promise<void> => {
+	registerProcessCleanup(dataDir);
+	return runNpmInstallPackage(slidevWorkspaceDir(dataDir), `playwright-chromium@${PLAYWRIGHT_CHROMIUM_VERSION}`, emit);
+};
 
-export const ensureSlidevWorkspace = async (dataDir: string, emit: (line: string) => void): Promise<void> => {
+const workspaceSetupTasks = new Map<string, Promise<void>>();
+
+const ensureSlidevWorkspaceOnce = async (dataDir: string, emit: (line: string) => void): Promise<void> => {
 	const workDir = slidevWorkspaceDir(dataDir);
 	await mkdir(workDir, { recursive: true });
-	const slidevBin = join(workDir, 'node_modules', '.bin', 'slidev');
-	const needsInstall = await access(slidevBin).then(() => false).catch(() => true);
-	if (!needsInstall) return;
-	await writeFile(join(workDir, 'package.json'), WORK_DIR_PACKAGE_JSON, 'utf-8');
-	emit('First-time setup: installing @slidev/cli and themes via npm…');
-	emit('(This takes ~30 s once; subsequent starts are instant.)');
+	await writeWorkspacePackageJson(workDir);
+	const installedVersions = await Promise.all(Object.keys(REQUIRED_WORKSPACE_DEPENDENCIES).map(async packageName => {
+		try {
+			const packagePath = join(workDir, 'node_modules', ...packageName.split('/'), 'package.json');
+			return JSON.parse(await readFile(packagePath, 'utf-8')).version as string | undefined;
+		} catch {
+			return undefined;
+		}
+	}));
+	const requiredVersions = Object.values(REQUIRED_WORKSPACE_DEPENDENCIES);
+	if (installedVersions.every((version, index) => version === requiredVersions[index])) {
+		try {
+			await resolvePackageBin(workDir, '@slidev/cli', 'slidev');
+			return;
+		} catch {
+			await rm(join(workDir, 'node_modules', '@slidev', 'cli'), { recursive: true, force: true });
+		}
+	}
+	emit('Preparing compatible @slidev/cli and theme versions via npm…');
+	emit('(First-time setup may take ~30 s; subsequent starts are instant.)');
 	await runNpmInstallPackage(workDir, [], emit);
 	emit('npm install complete.');
+};
+
+export const ensureSlidevWorkspace = (dataDir: string, emit: (line: string) => void): Promise<void> => {
+	registerProcessCleanup(dataDir);
+	const workDir = slidevWorkspaceDir(dataDir);
+	const existingTask = workspaceSetupTasks.get(workDir);
+	if (existingTask) return existingTask;
+	const task = ensureSlidevWorkspaceOnce(dataDir, emit).finally(() => {
+		if (workspaceSetupTasks.get(workDir) === task) workspaceSetupTasks.delete(workDir);
+	});
+	workspaceSetupTasks.set(workDir, task);
+	return task;
 };
 
 const prepareSlideshowDir = async (
@@ -567,38 +731,36 @@ const prepareSlideshowDir = async (
 	emit: (line: string) => void,
 	preprocessMarkdown?: (md: string, workDir: string) => Promise<string>,
 	extraFiles?: Record<string, string>,
-): Promise<{ workDir: string; slidevBin: string }> => {
-	const workDir = slidevWorkspaceDir(dataDir);
-	await mkdir(workDir, { recursive: true });
-	const processedMarkdown = preprocessMarkdown
-		? await preprocessMarkdown(markdown, workDir)
-		: markdown;
-	await writeFile(join(workDir, 'slides.md'), processedMarkdown, 'utf-8');
+): Promise<{ workDir: string; workspaceDir: string; slidevEntry: string }> => {
+	const workspaceDir = slidevWorkspaceDir(dataDir);
+	await ensureSlidevWorkspace(dataDir, emit);
+	const decksDir = join(workspaceDir, 'decks');
+	await mkdir(decksDir, { recursive: true });
+	const workDir = await mkdtemp(join(decksDir, 'deck-'));
 
-	// Remove stale extra files from previous runs that may no longer be needed.
-	for (const relativePath of EXTRA_FILE_PATHS) {
-		if (!extraFiles || !(relativePath in extraFiles)) {
-			try { await unlink(join(workDir, relativePath)); } catch { /* already gone */ }
+	try {
+		const processedMarkdown = preprocessMarkdown
+			? await preprocessMarkdown(markdown, workDir)
+			: markdown;
+		await writeFile(join(workDir, 'slides.md'), processedMarkdown, 'utf-8');
+
+		if (extraFiles) {
+			for (const [relativePath, content] of Object.entries(extraFiles)) {
+				const fullPath = join(workDir, relativePath);
+				await mkdir(join(fullPath, '..'), { recursive: true });
+				await writeFile(fullPath, content, 'utf-8');
+			}
 		}
+
+		return {
+			workDir,
+			workspaceDir,
+			slidevEntry: await resolvePackageBin(workspaceDir, '@slidev/cli', 'slidev'),
+		};
+	} catch (error) {
+		await removeManagedDeck(dataDir, workDir);
+		throw error;
 	}
-
-	if (extraFiles) {
-		for (const [relativePath, content] of Object.entries(extraFiles)) {
-			const fullPath = join(workDir, relativePath);
-			await mkdir(join(fullPath, '..'), { recursive: true });
-			await writeFile(fullPath, content, 'utf-8');
-		}
-	}
-
-	// Check whether the local Slidev binary already exists.
-	const slidevBin = join(workDir, 'node_modules', '.bin', 'slidev');
-	const needsInstall = await access(slidevBin).then(() => false).catch(() => true);
-
-	if (needsInstall) {
-		await ensureSlidevWorkspace(dataDir, emit);
-	}
-
-	return { workDir, slidevBin };
 };
 
 // ---------- public API ----------
@@ -614,7 +776,7 @@ export const startSlidevServer = async (
 ): Promise<SlidevServer> => {
 	registerProcessCleanup(dataDir);
 
-	const env = buildChildEnv();
+	const env = buildNodeChildEnv();
 
 	const emit = (line: string) => {
 		const redacted = redactSensitiveLogLine(line);
@@ -622,10 +784,10 @@ export const startSlidevServer = async (
 		onLog?.(redacted);
 	};
 
-	const { workDir, slidevBin } = await prepareSlideshowDir(markdown, dataDir, emit, preprocessMarkdown, extraFiles);
+	const { workDir, slidevEntry } = await prepareSlideshowDir(markdown, dataDir, emit, preprocessMarkdown, extraFiles);
 
-	const cmd = slidevBin;
-	const args = ['slides.md', '--port', String(port), '--no-open'];
+	const cmd = process.execPath;
+	const args = [slidevEntry, 'slides.md', '--port', String(port), '--no-open'];
 	const remotePassword = remoteOptions?.remotePassword.trim() ?? '';
 	const remoteBind = remoteOptions?.remoteBind.trim() ?? '';
 	const remoteEnabled = Boolean(remoteOptions?.remoteAccess || remotePassword || remoteOptions?.remoteTunnel);
@@ -637,9 +799,9 @@ export const startSlidevServer = async (
 
 	emit(`Starting: ${quoteForLog(cmd)} ${displayArgs.join(' ')}`);
 
-	const proc = spawn(cmd, args.map(quoteForWindowsShell), {
+	const proc = spawn(cmd, args, {
 		cwd: workDir,
-		shell: process.platform === 'win32',
+		shell: false,
 		env,
 		// New process group so we can kill the entire tree with -pid.
 		detached: process.platform !== 'win32',
@@ -656,14 +818,65 @@ export const startSlidevServer = async (
 	proc.stdout?.on('data', handleData);
 	proc.stderr?.on('data', handleData);
 
-	// Detect immediate spawn failures (ENOENT = command not found).
-	const spawnError = await new Promise<Error | null>((resolve) => {
+	const server: SlidevServer = {
+		process: proc,
+		port,
+		workDir,
+		dataDir,
+		closed: new Promise<number | null>((resolveClosed) => {
+			proc.once('close', (code) => {
+				closedProcesses.add(proc);
+				activeServers.delete(server);
+				removePidFileSync(dataDir, proc.pid);
+				removeManagedDeck(dataDir, workDir)
+					.catch(() => {})
+					.finally(() => resolveClosed(code));
+			});
+		}),
+	};
+	activeServers.add(server);
+
+	// Detect immediate spawn failures and exits before returning the handle.
+	const startupFailure = new Promise<Error | null>((resolveStartup) => {
 		let done = false;
-		proc.once('error', (err) => { if (!done) { done = true; resolve(err); } });
-		setTimeout(() => { if (!done) { done = true; resolve(null); } }, 400);
+		proc.once('error', (error) => {
+			if (!done) {
+				done = true;
+				resolveStartup(error);
+			}
+		});
+		proc.once('close', (code) => {
+			if (!done) {
+				done = true;
+				resolveStartup(new Error(`Slidev exited with code ${code} before startup`));
+			}
+		});
+		setTimeout(() => {
+			if (!done) {
+				done = true;
+				resolveStartup(null);
+			}
+		}, 400);
 	});
 
+	try {
+		if (proc.pid) {
+			await writePidFile(dataDir, proc.pid, workDir, cmd, slidevEntry);
+			if (proc.exitCode !== null || proc.signalCode !== null) removePidFileSync(dataDir, proc.pid);
+		}
+	} catch (error) {
+		killServerSync(server);
+		activeServers.delete(server);
+		await removeManagedDeck(dataDir, workDir).catch(() => {});
+		throw error;
+	}
+
+	const spawnError = await startupFailure;
 	if (spawnError) {
+		killServerSync(server);
+		activeServers.delete(server);
+		removePidFileSync(dataDir, proc.pid);
+		await removeManagedDeck(dataDir, workDir).catch(() => {});
 		const isNotFound = (spawnError as NodeJS.ErrnoException).code === 'ENOENT';
 		const hint = isNotFound
 			? `\n\nThe local Slidev binary was not found. Try restarting Joplin or reinstalling the plugin dependencies.`
@@ -674,12 +887,6 @@ export const startSlidevServer = async (
 	// Unref so Joplin's event loop is not held open waiting for this child.
 	// The exit/signal handlers above will still kill it when Joplin goes down.
 	if (process.platform !== 'win32') proc.unref();
-
-	const server: SlidevServer = { process: proc, port, workDir, dataDir };
-	activeServers.add(server);
-
-	// Persist PID + metadata so crash-recovery cleanup can verify ownership.
-	if (proc.pid) await writePidFile(dataDir, proc.pid, workDir, cmd);
 
 	return server;
 };
@@ -699,39 +906,45 @@ export const exportSlidevDeck = async (
 	preprocessMarkdown?: (md: string, workDir: string) => Promise<string>,
 	extraFiles?: Record<string, string>,
 ): Promise<string> => {
-	const env = buildChildEnv();
+	registerProcessCleanup(dataDir);
+	const env = buildNodeChildEnv();
 	const emit = (line: string) => {
 		const redacted = redactSensitiveLogLine(line);
 		console.log('[Slidev]', redacted);
 		onLog?.(redacted);
 	};
-	const { workDir, slidevBin } = await prepareSlideshowDir(markdown, dataDir, emit, preprocessMarkdown, extraFiles);
-	await ensurePlaywrightChromium(workDir, emit);
+	const { workDir, workspaceDir, slidevEntry } = await prepareSlideshowDir(markdown, dataDir, emit, preprocessMarkdown, extraFiles);
+	try {
+		await ensurePlaywrightChromium(workspaceDir, emit);
+		const args = [slidevEntry, 'export', 'slides.md', '--format', format, '--output', outputPath];
+		emit(`Exporting: ${quoteForLog(process.execPath)} ${args.map(quoteForLog).join(' ')}`);
 
-	const args = ['export', 'slides.md', '--format', format, '--output', outputPath];
-	emit(`Exporting: ${quoteForLog(slidevBin)} ${args.map(quoteForLog).join(' ')}`);
+		await new Promise<void>((resolveExport, reject) => {
+			const proc = spawn(process.execPath, args, {
+				cwd: workDir,
+				shell: false,
+				env,
+				detached: process.platform !== 'win32',
+				stdio: ['ignore', 'pipe', 'pipe'],
+			});
+			trackAuxiliaryProcess(proc);
 
-	await new Promise<void>((resolve, reject) => {
-		const proc = spawn(slidevBin, args.map(quoteForWindowsShell), {
-			cwd: workDir,
-			shell: process.platform === 'win32',
-			env,
-			stdio: ['ignore', 'pipe', 'pipe'],
+			const handleData = (d: Buffer) => {
+				for (const line of d.toString().split('\n')) {
+					const trimmed = line.trimEnd();
+					if (trimmed) onLog?.(redactSensitiveLogLine(trimmed));
+				}
+			};
+			proc.stdout?.on('data', handleData);
+			proc.stderr?.on('data', handleData);
+			proc.on('error', reject);
+			proc.on('close', (code) => {
+				code === 0 ? resolveExport() : reject(new Error(`Slidev export exited with code ${code}`));
+			});
 		});
-
-		const handleData = (d: Buffer) => {
-			for (const line of d.toString().split('\n')) {
-				const trimmed = line.trimEnd();
-				if (trimmed) onLog?.(redactSensitiveLogLine(trimmed));
-			}
-		};
-		proc.stdout?.on('data', handleData);
-		proc.stderr?.on('data', handleData);
-		proc.on('error', reject);
-		proc.on('close', (code) => {
-			code === 0 ? resolve() : reject(new Error(`Slidev export exited with code ${code}`));
-		});
-	});
+	} finally {
+		await removeManagedDeck(dataDir, workDir);
+	}
 
 	emit(`Export complete: ${outputPath}`);
 	return outputPath;
