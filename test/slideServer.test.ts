@@ -17,6 +17,7 @@ import {
 	startSlidevServer,
 	stopSlidevServer,
 	SlidevServer,
+	updateSlidevCore,
 } from '../src/slideServer';
 
 const tempDirs: string[] = [];
@@ -102,6 +103,7 @@ describe('slideServer', () => {
 		expect(first.workDir).not.toBe(second.workDir);
 		await expect(access(join(first.workDir, 'slides.md'))).resolves.toBeUndefined();
 		await expect(access(join(second.workDir, 'slides.md'))).resolves.toBeUndefined();
+		await expect(updateSlidevCore(dataDir, () => {})).rejects.toThrow('Close running Slidev presentations');
 
 		stopSlidevServer(first);
 		await first.closed;

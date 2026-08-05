@@ -565,6 +565,43 @@ const writeWorkspacePackageJson = async (workDir: string): Promise<void> => {
 	await rename(temporaryPath, packagePath);
 };
 
+const workspaceStateTails = new Map<string, Promise<void>>();
+const activeWorkspaceUsers = new Map<string, number>();
+
+const withWorkspaceState = <T>(workDir: string, operation: () => Promise<T> | T): Promise<T> => {
+	const previous = workspaceStateTails.get(workDir) ?? Promise.resolve();
+	const result = previous.then(operation);
+	const tail = result.then(() => undefined, () => undefined);
+	workspaceStateTails.set(workDir, tail);
+	tail.finally(() => {
+		if (workspaceStateTails.get(workDir) === tail) workspaceStateTails.delete(workDir);
+	}).catch(() => {});
+	return result;
+};
+
+const withWorkspaceMutation = <T>(workDir: string, operation: () => Promise<T>): Promise<T> =>
+	withWorkspaceState(workDir, async () => {
+		if ((activeWorkspaceUsers.get(workDir) ?? 0) > 0) {
+			throw new Error('Close running Slidev presentations and exports before changing workspace packages.');
+		}
+		return operation();
+	});
+
+const acquireWorkspaceUse = (workDir: string): Promise<() => Promise<void>> =>
+	withWorkspaceState(workDir, () => {
+		activeWorkspaceUsers.set(workDir, (activeWorkspaceUsers.get(workDir) ?? 0) + 1);
+		let released = false;
+		return async () => {
+			if (released) return;
+			released = true;
+			await withWorkspaceState(workDir, () => {
+				const remaining = (activeWorkspaceUsers.get(workDir) ?? 1) - 1;
+				if (remaining > 0) activeWorkspaceUsers.set(workDir, remaining);
+				else activeWorkspaceUsers.delete(workDir);
+			});
+		};
+	});
+
 const runStreamingProcess = (
 	command: string,
 	args: string[],
@@ -596,7 +633,8 @@ const runNpmCommand = (
 	emit: (line: string) => void,
 ): Promise<void> => {
 	const invocation = resolveNpmInvocation(args);
-	return runStreamingProcess(invocation.command, invocation.args, workDir, invocation.shell, operation, emit);
+	return withWorkspaceMutation(workDir, () =>
+		runStreamingProcess(invocation.command, invocation.args, workDir, invocation.shell, operation, emit));
 };
 
 const runNpmInstallPackage = (
@@ -636,11 +674,15 @@ const runNodePackageBin = (
 	entryPath: string,
 	args: string[],
 	emit: (line: string) => void,
-): Promise<void> => runStreamingProcess(process.execPath, [entryPath, ...args], workDir, false, 'Process', emit);
+): Promise<void> => withWorkspaceMutation(workDir, () =>
+	runStreamingProcess(process.execPath, [entryPath, ...args], workDir, false, 'Process', emit));
 
 const ensurePlaywrightChromium = async (workDir: string, emit: (line: string) => void) => {
 	const packagePath = join(workDir, 'node_modules', 'playwright-chromium', 'package.json');
-	const needsInstall = await access(packagePath).then(() => false).catch(() => true);
+	const installedVersion = await readFile(packagePath, 'utf-8')
+		.then(content => JSON.parse(content).version as string | undefined)
+		.catch(() => undefined);
+	const needsInstall = installedVersion !== SUPPORTED_PLAYWRIGHT_VERSION;
 	if (needsInstall) {
 		emit('Installing playwright-chromium for Slidev CLI export...');
 		emit('(This is required by Slidev export and may take a while once.)');
@@ -694,7 +736,7 @@ const workspaceSetupTasks = new Map<string, Promise<void>>();
 const ensureSlidevWorkspaceOnce = async (dataDir: string, emit: (line: string) => void): Promise<void> => {
 	const workDir = slidevWorkspaceDir(dataDir);
 	await mkdir(workDir, { recursive: true });
-	await writeWorkspacePackageJson(workDir);
+	await withWorkspaceState(workDir, () => writeWorkspacePackageJson(workDir));
 	const installedVersions = await Promise.all(Object.keys(REQUIRED_WORKSPACE_DEPENDENCIES).map(async packageName => {
 		try {
 			const packagePath = join(workDir, 'node_modules', ...packageName.split('/'), 'package.json');
@@ -789,7 +831,8 @@ export const startSlidevServer = async (
 		onLog?.(redacted);
 	};
 
-	const { workDir, slidevEntry } = await prepareSlideshowDir(markdown, dataDir, emit, preprocessMarkdown, extraFiles);
+	const { workDir, workspaceDir, slidevEntry } = await prepareSlideshowDir(markdown, dataDir, emit, preprocessMarkdown, extraFiles);
+	const releaseWorkspaceUse = await acquireWorkspaceUse(workspaceDir);
 
 	const cmd = process.execPath;
 	const args = [slidevEntry, 'slides.md', '--port', String(port), '--no-open'];
@@ -804,14 +847,21 @@ export const startSlidevServer = async (
 
 	emit(`Starting: ${quoteForLog(cmd)} ${displayArgs.join(' ')}`);
 
-	const proc = spawn(cmd, args, {
-		cwd: workDir,
-		shell: false,
-		env,
-		// New process group so we can kill the entire tree with -pid.
-		detached: process.platform !== 'win32',
-		stdio: ['ignore', 'pipe', 'pipe'],
-	});
+	let proc: ChildProcess;
+	try {
+		proc = spawn(cmd, args, {
+			cwd: workDir,
+			shell: false,
+			env,
+			// New process group so we can kill the entire tree with -pid.
+			detached: process.platform !== 'win32',
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
+	} catch (error) {
+		await releaseWorkspaceUse();
+		await removeManagedDeck(dataDir, workDir);
+		throw error;
+	}
 
 	// Attach log handlers BEFORE the spawnError check so no output is missed.
 	const handleData = (d: Buffer) => {
@@ -833,9 +883,10 @@ export const startSlidevServer = async (
 				closedProcesses.add(proc);
 				activeServers.delete(server);
 				removePidFileSync(dataDir, proc.pid);
-				removeManagedDeck(dataDir, workDir)
-					.catch(() => {})
-					.finally(() => resolveClosed(code));
+				Promise.allSettled([
+					removeManagedDeck(dataDir, workDir),
+					releaseWorkspaceUse(),
+				]).finally(() => resolveClosed(code));
 			});
 		}),
 	};
@@ -919,8 +970,10 @@ export const exportSlidevDeck = async (
 		onLog?.(redacted);
 	};
 	const { workDir, workspaceDir, slidevEntry } = await prepareSlideshowDir(markdown, dataDir, emit, preprocessMarkdown, extraFiles);
+	let releaseWorkspaceUse: (() => Promise<void>) | undefined;
 	try {
 		await ensurePlaywrightChromium(workspaceDir, emit);
+		releaseWorkspaceUse = await acquireWorkspaceUse(workspaceDir);
 		const args = [slidevEntry, 'export', 'slides.md', '--format', format, '--output', outputPath];
 		emit(`Exporting: ${quoteForLog(process.execPath)} ${args.map(quoteForLog).join(' ')}`);
 
@@ -948,7 +1001,10 @@ export const exportSlidevDeck = async (
 			});
 		});
 	} finally {
-		await removeManagedDeck(dataDir, workDir);
+		await Promise.all([
+			removeManagedDeck(dataDir, workDir),
+			releaseWorkspaceUse?.(),
+		]);
 	}
 
 	emit(`Export complete: ${outputPath}`);

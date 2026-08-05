@@ -17,7 +17,11 @@ export default defineConfig({
     enforce: 'pre',
     resolveId(source, importer) {
       if (importer?.includes('slides.md__slidev_')) {
-        if (source.startsWith('./resources/') || source.startsWith('resources/')) return resolveResource(source);
+        if (source.startsWith('./resources/') || source.startsWith('resources/')) {
+          const resolved = resolveResource(source);
+          if (!resolved) throw new Error('Joplin resource path escapes the presentation resource directory');
+          return resolved;
+        }
       }
       return null;
     },
