@@ -1,7 +1,8 @@
 export const buildViteConfigContent = (remoteTunnel: boolean): string => `import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
-const resourceRoot = resolve(__dirname, 'resources');
+const resourceRoot = fileURLToPath(new URL('./resources/', import.meta.url));
 
 const resolveResource = (source) => {
   const prefix = source.startsWith('./resources/') ? './resources/' : 'resources/';

@@ -17,20 +17,21 @@ describe('buildSlidevExtraFiles', () => {
 	it('adds a Vite resolver for Slidev virtual-module resource imports', () => {
 		const files = buildSlidevExtraFiles({ remoteTunnel: false, presenterControlledNavigation: false });
 
-		expect(files['vite.config.ts']).toContain('joplin-slidev-resource-resolver');
-		expect(files['vite.config.ts']).toContain("source.startsWith('./resources/')");
-		expect(files['vite.config.ts']).toContain("source.startsWith('resources/')");
-		expect(files['vite.config.ts']).toContain("importer?.includes('slides.md__slidev_')");
-		expect(files['vite.config.ts']).toContain("relativeTarget.startsWith('..' + sep)");
-		expect(files['vite.config.ts']).toContain("if (!resolved) throw new Error");
-		expect(files['vite.config.ts']).not.toContain('return resolve(__dirname, source');
-		expect(files['vite.config.ts']).not.toContain("source.startsWith('/resources/");
+		expect(files['vite.config.mjs']).toContain('joplin-slidev-resource-resolver');
+		expect(files['vite.config.mjs']).toContain("source.startsWith('./resources/')");
+		expect(files['vite.config.mjs']).toContain("source.startsWith('resources/')");
+		expect(files['vite.config.mjs']).toContain("importer?.includes('slides.md__slidev_')");
+		expect(files['vite.config.mjs']).toContain("relativeTarget.startsWith('..' + sep)");
+		expect(files['vite.config.mjs']).toContain("new URL('./resources/', import.meta.url)");
+		expect(files['vite.config.mjs']).toContain("if (!resolved) throw new Error");
+		expect(files['vite.config.mjs']).not.toContain('return resolve(__dirname, source');
+		expect(files['vite.config.mjs']).not.toContain("source.startsWith('/resources/");
 	});
 
 	it('keeps the tunnel host allow-list when generating vite config', () => {
 		const files = buildSlidevExtraFiles({ remoteTunnel: true, presenterControlledNavigation: false });
 
-		expect(files['vite.config.ts']).toContain("allowedHosts: ['trycloudflare.com', '.trycloudflare.com']");
+		expect(files['vite.config.mjs']).toContain("allowedHosts: ['trycloudflare.com', '.trycloudflare.com']");
 	});
 
 	it('uses the injected Slidev navigation state without importing transitive router packages', async () => {

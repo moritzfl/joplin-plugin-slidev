@@ -5,18 +5,11 @@ import globalTopVue from './slidevExtraFiles/global-top.vue';
 import globalBottomVue from './slidevExtraFiles/global-bottom.vue';
 import { buildViteConfigContent } from './slidevExtraFiles/vite-config';
 
-export const EXTRA_FILE_PATHS = [
-	'styles/index.css',
-	'global-bottom.vue',
-	'global-top.vue',
-	'vite.config.ts',
-] as const;
-
 export const buildSlidevExtraFiles = (settings: Pick<PluginSettings, 'remoteTunnel' | 'presenterControlledNavigation'>): Record<string, string> => {
 	const extraFiles: Record<string, string> = {
 		'styles/index.css': stylesIndex,
 		'global-bottom.vue': globalBottomVue,
-		'vite.config.ts': buildViteConfigContent(settings.remoteTunnel),
+		'vite.config.mjs': buildViteConfigContent(settings.remoteTunnel),
 	};
 
 	if (settings.presenterControlledNavigation) {
