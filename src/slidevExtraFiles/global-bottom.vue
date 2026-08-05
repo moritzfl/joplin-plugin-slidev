@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { ComputedRef } from 'vue'
 import { inject, computed, onUnmounted, watch } from 'vue'
 
 interface SlideRoute {
@@ -11,9 +10,9 @@ interface SlideRoute {
 }
 
 interface SlidevNav {
-  currentPage: ComputedRef<number>
-  total: ComputedRef<number>
-  currentSlideRoute: ComputedRef<SlideRoute>
+  currentPage: number
+  total: number
+  currentSlideRoute: SlideRoute
 }
 
 interface SlidevContext {
@@ -25,16 +24,13 @@ const slidevCtx = inject<SlidevContext>('$$slidev-context')!
 
 const fm = computed(() => {
   try {
-    return slidevCtx.nav.currentSlideRoute.value.meta?.slide?.frontmatter ?? {}
+    return slidevCtx.nav.currentSlideRoute.meta?.slide?.frontmatter ?? {}
   } catch {
     return {}
   }
 })
 
-// Use optional chaining: if inject() ever returns undefined (e.g. outside a
-// Slidev context or after an upstream rename) these fall back gracefully to ''
-// rather than throwing at runtime.
-const configs = computed(() => (slidevCtx as any)?.configs ?? {})
+const configs = computed(() => slidevCtx.configs)
 const numberPos = computed(() => fm.value.slideNumber || configs.value.slideNumber || '')
 const barPos = computed(() => fm.value.slideProgressBar || configs.value.slideProgressBar || '')
 
@@ -60,7 +56,7 @@ const stopMedia = () => {
     el.currentTime = 0
   }
 }
-watch(() => slidevCtx.nav.currentPage.value, stopMedia)
+watch(() => slidevCtx.nav.currentPage, stopMedia)
 window.addEventListener('hashchange', stopMedia)
 window.addEventListener('popstate', stopMedia)
 

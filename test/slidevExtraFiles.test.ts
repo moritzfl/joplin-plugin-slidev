@@ -37,7 +37,8 @@ describe('buildSlidevExtraFiles', () => {
 	it('uses the injected Slidev navigation state without importing transitive router packages', async () => {
 		const source = await readFile(join(process.cwd(), 'src', 'slidevExtraFiles', 'global-bottom.vue'), 'utf-8');
 
-		expect(source).toContain('slidevCtx.nav.currentPage.value');
+		expect(source).toContain('watch(() => slidevCtx.nav.currentPage, stopMedia)');
+		expect(source).not.toContain('slidevCtx.nav.currentPage.value');
 		expect(source).not.toContain("from 'vue-router'");
 	});
 });
