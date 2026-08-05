@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-08-06
+- Prevented presentation attachments from accessing files outside their managed folders
+- Fixed missing or colliding attachments in exported presentations
+- Improved presentation startup, shutdown, recovery, and concurrent export reliability across platforms
+- Fixed package actions selecting hidden items and protected required presentation components
+- Fixed ordinary slide separators hiding slide content in Joplin previews
+- Fixed slide numbers, progress bars, and background media stopping when changing slides
+- Fixed presentation startup warnings from the local Vite configuration
+- Fixed attachment links inside code blocks being rewritten incorrectly
+- Made plugin packages reproducible and verified before publishing
+
 ## [0.3.1] - 2026-05-14
 - Added retry options for package installs with dependency conflicts
 - Improved package uninstall messages
