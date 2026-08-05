@@ -36,22 +36,20 @@ interface ExportedResource {
 	mime: string;
 }
 
-// Matches fenced code blocks (backticks or tildes, 3+ chars), including empty
-// ones. Used only to skip code blocks so preprocessing does not rewrite their
-// content.
-//
-// This is intentionally a little stricter than Slidev's slide-splitting parser:
-// the closing fence must match the opener exactly, except for trailing spaces.
-// That is sufficient for normal Markdown fences and avoids over-matching.
-const FENCE_RE = /^(`{3,}|~{3,})[^\n]*\n([\s\S]*?\n)?\1[ \t]*$/gm;
-
 const applyOutsideFences = (markdown: string, fn: (chunk: string) => string): string => {
+	const lineStarts = [0];
+	for (const match of markdown.matchAll(/\n/g)) lineStarts.push(match.index + 1);
+	const lineOffset = (line: number) => lineStarts[line] ?? markdown.length;
+	const ranges = markdownParser.parse(markdown, {})
+		.filter(token => token.type === 'fence' && token.map)
+		.map(token => [lineOffset(token.map![0]), lineOffset(token.map![1])] as const);
+
 	let result = '';
 	let last = 0;
-	for (const match of markdown.matchAll(FENCE_RE)) {
-		result += fn(markdown.slice(last, match.index));
-		result += match[0];
-		last = match.index! + match[0].length;
+	for (const [start, end] of ranges) {
+		result += fn(markdown.slice(last, start));
+		result += markdown.slice(start, end);
+		last = end;
 	}
 	return result + fn(markdown.slice(last));
 };

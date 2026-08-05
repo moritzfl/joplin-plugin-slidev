@@ -166,4 +166,32 @@ describe('markdownPreprocessor', () => {
 
 		await expect(preprocess(`![missing](:/${resourceId})`, workDir)).rejects.toThrow(resourceId);
 	});
+
+	it('preserves resource references inside indented fences with longer closers', async () => {
+		const workDir = await makeTempDir();
+		const preprocess = makeMarkdownPreprocessor(baseOptions);
+		const markdown = `   ~~~ markdown\n![example](:/${resourceId})\n   ~~~~`;
+
+		await expect(preprocess(markdown, workDir)).resolves.toContain(`![example](:/${resourceId})`);
+		expect(getMock).not.toHaveBeenCalled();
+	});
+
+	it('preserves resource references inside unclosed fences', async () => {
+		const workDir = await makeTempDir();
+		const preprocess = makeMarkdownPreprocessor(baseOptions);
+		const markdown = `\`\`\`markdown\n![example](:/${resourceId})`;
+
+		await expect(preprocess(markdown, workDir)).resolves.toContain(`![example](:/${resourceId})`);
+		expect(getMock).not.toHaveBeenCalled();
+	});
+
+	it('preserves CRLF fences and processes content after them', async () => {
+		const workDir = await makeTempDir();
+		const preprocess = makeMarkdownPreprocessor(baseOptions);
+		const markdown = '```markdown\r\n* inside\r\n````\r\n* outside';
+
+		const result = await preprocess(markdown, workDir);
+		expect(result).toContain('```markdown\r\n* inside\r\n````');
+		expect(result).toContain('- outside');
+	});
 });
