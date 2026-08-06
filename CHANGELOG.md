@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-08-06
+- Fixed a custom npm path setting being ignored on Windows
+
 ## [0.3.2] - 2026-08-06
 - Prevented presentation attachments from accessing files outside their managed folders
 - Fixed missing or colliding attachments in exported presentations

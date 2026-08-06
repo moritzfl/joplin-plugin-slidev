@@ -1,6 +1,6 @@
 {
   "name": "joplin-plugin-slidev",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "scripts": {
     "sync-api": "node scripts/sync-joplin-api.mjs",
     "prepare": "npm run sync-api",
