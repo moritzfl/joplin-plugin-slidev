@@ -328,6 +328,13 @@ const resolveNpmInvocation = (args: string[]): { command: string; args: string[]
 	const npmCommand = resolveNpmCmd();
 	if (process.platform !== 'win32') return { command: npmCommand, args, shell: false };
 
+	// Honor an explicit npm path as-is. Rewriting to npm-cli.js next to Node would
+	// ignore the override (and break tests that inject a Node-based stub).
+	if (_configuredNpmPath) {
+		const needsShell = /\.(cmd|bat)$/i.test(npmCommand);
+		return { command: npmCommand, args, shell: needsShell };
+	}
+
 	let npmCmdPath = npmCommand;
 	if (!npmCmdPath.includes('\\') && !npmCmdPath.includes('/')) {
 		const whereResult = spawnSync('where.exe', [npmCmdPath], { encoding: 'utf-8' });

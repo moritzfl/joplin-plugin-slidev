@@ -56,7 +56,10 @@ afterEach(async () => {
 	const closingServers = servers.splice(0);
 	for (const server of closingServers) stopSlidevServer(server);
 	await Promise.all(closingServers.map(server => server.closed));
-	for (const dir of tempDirs.splice(0)) await rm(dir, { recursive: true, force: true });
+	// Windows can keep temp files locked briefly after child processes exit.
+	for (const dir of tempDirs.splice(0)) {
+		await rm(dir, { recursive: true, force: true }).catch(() => {});
+	}
 });
 
 describe('slideServer', () => {
