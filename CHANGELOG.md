@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-08-12
+- Fixed Joplin plugin repository updates being blocked by an overly strict Node engine requirement
+
 ## [0.3.3] - 2026-08-06
 - Fixed a custom npm path setting being ignored on Windows
 

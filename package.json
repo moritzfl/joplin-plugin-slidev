@@ -1,6 +1,6 @@
 {
   "name": "joplin-plugin-slidev",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "scripts": {
     "sync-api": "node scripts/sync-joplin-api.mjs",
     "prepare": "npm run sync-api",
@@ -20,9 +20,6 @@
     "url": "https://github.com/moritzfl/joplin-plugin-slidev"
   },
   "license": "Apache-2.0",
-  "engines": {
-    "node": ">=22.18"
-  },
   "packageManager": "npm@11.16.0",
   "keywords": [
     "joplin-plugin"
